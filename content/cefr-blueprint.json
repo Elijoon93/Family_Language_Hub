@@ -1,0 +1,59 @@
+{
+  "version": "6.2.0-alpha1",
+  "principles": [
+    "Can-do performance objectives",
+    "Four skills plus interaction, pronunciation and mediation where age and level appropriate",
+    "Observable evidence and rubric for each lesson",
+    "Age-banded task design",
+    "No formal CEFR claim for the preschool PRE pathway"
+  ],
+  "levels": {
+    "PRE": {
+      "preschool": "Attend, point, move, choose and voluntarily imitate in 5–8 minute parent-guided encounters.",
+      "targetLessonsPerLanguage": 60
+    },
+    "A0": {
+      "adult": "Literacy and orientation bridge before A1.",
+      "school": "Alphabet, sound-symbol mapping, classroom routines and very familiar words.",
+      "targetLessonsPerLanguage": 80
+    },
+    "A1": {
+      "adult": "Meet concrete needs, introduce self and interact simply with slow clear support.",
+      "school": "Answer basic personal and everyday questions and understand short familiar instructions.",
+      "targetLessonsPerLanguage": 120
+    },
+    "A2": {
+      "adult": "Handle routine exchanges, immediate needs and simple descriptions.",
+      "school": "Link short sentences about familiar people, school, hobbies and events.",
+      "targetLessonsPerLanguage": 140
+    },
+    "B1": {
+      "adult": "Deal with common work and travel situations, describe experiences and give simple reasons.",
+      "school": "Understand main points on familiar school topics and create connected short texts.",
+      "targetLessonsPerLanguage": 160
+    },
+    "B2": {
+      "adult": "Interact with fluency, explain viewpoints and understand extended texts.",
+      "school": "Discuss familiar and some abstract topics with supporting detail.",
+      "targetLessonsPerLanguage": 180
+    },
+    "C1": {
+      "adult": "Use language flexibly for academic and professional purposes and present complex subjects clearly.",
+      "school": "Advanced optional pathway with age-appropriate academic projects and safeguarding.",
+      "targetLessonsPerLanguage": 200
+    },
+    "C2": {
+      "adult": "Understand virtually everything, synthesise sources and express precise nuanced meaning.",
+      "school": "Not a default target for the current 11-year-old pathway.",
+      "targetLessonsPerLanguage": 220
+    }
+  },
+  "authoringTargets": {
+    "microLessons": 1400,
+    "interactiveTasks": 3000,
+    "vocabularyAndChunks": 6000,
+    "gradedTextsAndStories": 300,
+    "realLifeMissions": 250,
+    "unitAndLevelAssessments": 150
+  }
+}
