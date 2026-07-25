@@ -1,0 +1,10 @@
+{
+  "name": "Family Language OS",
+  "version": "6.1.0-learning-engine-core",
+  "schema": 24,
+  "channel": "core-candidate",
+  "curriculum_units": 184,
+  "profiles": ["saeed", "arezoo", "elena", "aria"],
+  "languages": ["en", "de"],
+  "max_devices": 2
+}

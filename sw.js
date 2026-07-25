@@ -1,1 +1,8 @@
-const CACHE='family-language-v5-photos-1';const ASSETS=['./','./index.html','./manifest.webmanifest','./assets/profiles/arezoo.webp','./assets/profiles/elena.webp','./assets/profiles/aria.webp'];self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{const copy=res.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return res}).catch(()=>caches.match('./index.html')))));
+const CACHE='family-language-os-v6-1-core-1';
+const ASSETS=['./','./index.html','./styles.css','./config.js','./manifest.webmanifest','./assets/app-icon.svg','./assets/profiles/saeed.webp','./assets/profiles/arezoo.webp','./assets/profiles/elena.webp','./assets/profiles/aria.webp','./js/profile-images.js','./js/profiles.js','./js/visuals.js','./js/curriculum.js','./js/core.js','./js/storage.js','./js/engine.js','./js/app.js'];
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
+self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+self.addEventListener('fetch',event=>{
+  if(event.request.method!=='GET')return;
+  event.respondWith(caches.match(event.request).then(cached=>cached||fetch(event.request).then(response=>{const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));return response;}).catch(()=>event.request.mode==='navigate'?caches.match('./index.html'):undefined)));
+});

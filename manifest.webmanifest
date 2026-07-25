@@ -1,11 +1,13 @@
 {
-  "name": "خانه زبان خانواده",
-  "short_name": "خانه زبان",
+  "name": "Family Language OS — خانه زبان خانواده",
+  "short_name": "Family Language OS",
+  "description": "سامانه خانوادگی یادگیری انگلیسی و آلمانی با مسیر سن‌محور و موتور تطبیقی",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f3f6fa",
-  "theme_color": "#10253d",
+  "theme_color": "#0c2538",
   "lang": "fa",
   "dir": "rtl",
-  "icons": []
+  "icons": [{"src":"assets/app-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
 }
