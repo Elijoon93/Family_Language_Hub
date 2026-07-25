@@ -1,0 +1,27 @@
+name: Content Quality
+on:
+  push:
+    branches:
+      - v6.2-content-authoring
+      - v6.1-learning-engine-core
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate-content:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: JavaScript syntax
+        run: |
+          node --check js/core.js
+          node --check js/content-registry.js
+          node --check content/packs/foundation-tranche-1.js
+      - name: Learning engine tests
+        run: node tests/core.test.js
+      - name: Authored content tests
+        run: node tests/content-v6.2.test.js
