@@ -1,8 +1,9 @@
 {
   "name": "Family Language OS",
-  "version": "6.1.0-learning-engine-core",
-  "schema": 24,
-  "channel": "core-candidate",
-  "branch": "v6.1-learning-engine-core",
+  "version": "6.2.0-content-authoring-alpha1",
+  "schema": 25,
+  "channel": "authored-content-alpha",
+  "branch": "v6.2-content-authoring",
+  "parent": "6.1.0-learning-engine-core",
   "mainUntouched": true
 }
