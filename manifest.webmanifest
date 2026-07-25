@@ -1,0 +1,11 @@
+{
+  "name": "خانه زبان خانواده",
+  "short_name": "خانه زبان",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f6fa",
+  "theme_color": "#10253d",
+  "lang": "fa",
+  "dir": "rtl",
+  "icons": []
+}
