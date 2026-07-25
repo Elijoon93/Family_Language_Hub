@@ -1,0 +1,8 @@
+{
+  "name": "Family Language OS",
+  "version": "6.1.0-learning-engine-core",
+  "schema": 24,
+  "channel": "core-candidate",
+  "branch": "v6.1-learning-engine-core",
+  "mainUntouched": true
+}
