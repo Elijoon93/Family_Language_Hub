@@ -1,0 +1,155 @@
+chromium.launch(headless=True,executable_path='/usr/bin/chromium',args=['--no-sandbox','--disable-gpu','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream'])
++    context=browser.new_context(viewport={'width':1440,'height':1000},permissions=['microphone'])
++    page=context.new_page(); errors=[]
++    page.on('console',lambda msg: errors.append(f'console:{msg.type}:{msg.text}') if msg.type=='error' else None)
++    page.on('pageerror',lambda exc: errors.append(f'pageerror:{exc}'))
++    page.goto('http://127.0.0.1:8765/',wait_until='networkidle',timeout=120000)
++    page.wait_for_selector('#app:not(.hidden)',timeout=30000)
++    assert page.locator('.family-button').count()==4
++    assert page.locator('[data-view="reports"]').count()==1
++    assert page.locator('[data-view="parent"]').count()==1
++    assert page.locator('[data-view="sync"]').count()==1
++    # Close initial gate if present.
++    if page.locator('#sessionGate[open]').count():
++      page.locator('#sessionGate .close-btn').click()
++    # Authored content is wired into the active daily plan.
++    assert page.evaluate('Boolean(FLH_ENGINE.buildDailyPlan({force:true}).authoredLesson)')
++    # Route acceptance.
++    for view,selector in [('reports','.report-table'),('parent','#recordingsList'),('sync','#deviceList'),('me','.settings-grid')]:
++      page.click(f'[data-view="{view}"]');page.wait_for_selector(selector)
++    # Appearance settings.
++    page.select_option('[data-setting="appearance"]','dark');page.wait_for_timeout(150)
++    assert page.evaluate("document.documentElement.dataset.theme")=='dark'
++    # Open Elena and interactive alphabet.
++    page.click('[data-profile="elena"]');page.click('[data-view="practice"]');page.click('[data-practice="alphabet"]')
++    page.wait_for_selector('#taskDialog[open]');assert page.locator('.alphabet-card').count()==26;page.locator('#taskDialog .close-btn').click()
++    # Arya remains PRE and receives parent-guided authored content.
++    page.click('[data-profile="aria"]');page.click('[data-view="today"]')
++    assert page.evaluate("FLH_STORE.get().active.level")=='PRE'
++    plan=page.evaluate('FLH_ENGINE.buildDailyPlan({force:true})')
++    assert plan['authoredLesson']['profile']=='aria'
++    assert len(plan['steps'])<=6
++    # Reports are isolated by profile/language.
++    page.click('[data-view="reports"]');assert page.locator('.report-table tbody tr').count()==8
++    # Privacy dialog and local recording consent.
++    page.click('[data-view="parent"]');page.click('#privacyBtn');page.wait_for_selector('#privacyDialog[open]')
++    page.check('#acceptPrivacy');page.check('#acceptLocalRecord');page.click('#savePrivacy');
++    assert page.evaluate("FLH_PRIVACY.get().localRecordingConsent") is True
++    # PWA/service worker registration.
++    page.wait_for_timeout(1200)
++    assert page.evaluate("'serviceWorker' in navigator")
++    registrations=page.evaluate("navigator.serviceWorker.getRegistrations().then(x=>x.length)")
++    assert registrations>=1
++    # Offline reload after app shell is cached.
++    context.set_offline(True);page.reload(wait_until='domcontentloaded',timeout=60000);page.wait_for_selector('#app:not(.hidden)',timeout=30000);context.set_offline(False)
++    if errors: raise AssertionError('\n'.join(errors))
++    page.screenshot(path=str(ROOT/'artifacts'/'v7-desktop.png'),full_page=True)
++    context.close();browser.close()
++  print('BROWSER_V7_ACCEPTANCE_PASS')
++finally:
++  server.terminate();
++  try: server.wait(timeout=5)
++  except: server.kill()
+diff --git a/tests/browser_v7_embedded_acceptance.py b/tests/browser_v7_embedded_acceptance.py
+new file mode 100644
+index 0000000..6194a53
+--- /dev/null
++++ b/tests/browser_v7_embedded_acceptance.py
+@@ -0,0 +1,130 @@
++from playwright.sync_api import sync_playwright
++from pathlib import Path
++import json
++
++ROOT=Path(__file__).resolve().parents[1]
++HTML=(ROOT/'dist'/'Family_Language_OS_v7_RC1_Standalone.html').read_text('utf-8')
++ART=ROOT/'artifacts';ART.mkdir(exist_ok=True)
++
++def assert_true(v,msg):
++    if not v: raise AssertionError(msg)
++
++def main():
++  print('START',flush=True)
++  with sync_playwright() as p:
++    browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',args=['--no-sandbox','--disable-gpu','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream'])
++    context=browser.new_context(viewport={'width':1440,'height':1000},permissions=['microphone'])
++    page=context.new_page(); errors=[]
++    page.evaluate("""() => {
++      const data=new Map();
++      Object.defineProperty(window,'localStorage',{value:{
++        setItem(k,v){data.set(String(k),String(v));},getItem(k){return data.has(String(k))?data.get(String(k)):null;},
++        removeItem(k){data.delete(String(k));},clear(){data.clear();},key(i){return [...data.keys()][i]||null;},get length(){return data.size;}
++      },configurable:true});
++    }""")
++    page.on('console',lambda m: errors.append(f'console:{m.type}:{m.text}') if m.type=='error' else None)
++    page.on('pageerror',lambda e: errors.append(f'pageerror:{e}'))
++    page.set_content(HTML,wait_until='load',timeout=120000);page.wait_for_timeout(900);print('LOADED',flush=True)
++    assert_true(page.locator('#app').count()==1,'app root missing')
++    assert_true(page.locator('.family-button').count()==4,'four profiles not rendered')
++    assert_true(page.locator('.family-button img').count()==4,'real profile images not rendered')
++    assert_true(page.evaluate("[...document.querySelectorAll('.family-button img')].every(x=>x.complete&&x.naturalWidth>0)"),'profile image failed')
++    if page.locator('#sessionGate[open]').count(): page.locator('#sessionGate .close-btn').click()
++    page.screenshot(path=str(ART/'v7-family-gate-closed.png'),full_page=True)
++
++    print('BASIC',flush=True)
++    # Route acceptance.
++    route_selectors={'today':'#viewRoot .hero','path':'.level-map','practice':'.practice-grid','library':'.library-grid','reports':'.report-table','family':'.family-dashboard','parent':'#recordingsList','sync':'#deviceList','me':'.settings-grid'}
++    for view,selector in route_selectors.items():
++      print('ROUTE',view,flush=True)
++      page.click(f'[data-view="{view}"]');page.wait_for_selector(selector,timeout=10000)
++
++    print('ROUTES_DONE',flush=True)
++    # Every profile and language has an authored plan at its locked active level.
++    authored=page.evaluate("""() => {
++      const out={};
++      for(const pid of ['saeed','arezoo','elena','aria']){
++        out[pid]={};
++        for(const lang of ['en','de']){
++          FLH_STORE.update(s=>{const p=FLH_PROFILES[pid];s.active={...s.active,profile:pid,language:lang,level:pid==='aria'?'PRE':p.levels[lang],duration:p.dailyMinutes,goal:p.goals[lang][0]};return s;},'browser-profile');
++          FLH_STORE.clearPlan();const plan=FLH_ENGINE.buildDailyPlan({force:true});
++          out[pid][lang]={authored:Boolean(plan.authoredLesson),level:plan.level,steps:plan.steps.length,profile:plan.authoredLesson?.profile};
++        }
++      }
++      return out;
++    }""")
++    for pid in ['saeed','arezoo','elena','aria']:
++      for lang in ['en','de']:
++        assert_true(authored[pid][lang]['authored'],f'no authored plan {pid}/{lang}')
++        assert_true(authored[pid][lang]['profile']==pid,f'cross-profile content {pid}/{lang}')
++    assert_true(authored['aria']['en']['level']=='PRE' and authored['aria']['en']['steps']<=6,'Arya PRE policy broken')
++
++    print('AUTHORED_DONE',flush=True)
++    # Saeed report screenshot.
++    page.evaluate("FLH_STORE.update(s=>{const p=FLH_PROFILES.saeed;s.active={...s.active,profile:'saeed',language:'en',level:'B1',duration:45,goal:p.goals.en[0],view:'reports'};return s;},'restore-saeed')")
++    page.click('[data-view="reports"]');page.wait_for_selector('.report-table')
++    assert_true(page.locator('.report-table tbody tr').count()==8,'family matrix should have 8 rows')
++    page.screenshot(path=str(ART/'v7-reports-desktop.png'))
++    print('REPORT_DONE',flush=True)
++
++    # Elena visual alphabet interaction.
++    page.click('.family-button[data-profile="elena"]');page.click('[data-view="practice"]');page.wait_for_selector('.practice-grid')
++    page.click('[data-practice="alphabet"]');page.wait_for_selector('#taskDialog[open] .alphabet-card')
++    assert_true(page.locator('#taskDialog .alphabet-card').count()==26,'English alphabet must have 26 cards')
++    page.screenshot(path=str(ART/'v7-elena-alphabet.png'))
++    print('ELENA_DONE',flush=True)
++    page.locator('#taskDialog .close-btn').click()
++
++    # Arya parent-guided path.
++    page.click('.family-button[data-profile="aria"]');page.click('[data-view="today"]');page.wait_for_selector('#viewRoot .hero')
++    aria=page.evaluate("({level:FLH_STORE.get().active.level,plan:FLH_ENGINE.buildDailyPlan({force:true})})")
++    assert_true(aria['level']=='PRE','Arya active level is not PRE')
++    assert_true(aria['plan']['authoredLesson']['profile']=='aria','Arya plan is not authored for Arya')
++    assert_true(len(aria['plan']['steps'])<=6,'Arya plan too long')
++    page.screenshot(path=str(ART/'v7-aria-parent-session.png'))
++    print('ARIA_DONE',flush=True)
++
++    # Privacy consent and local-only policy.
++    page.click('[data-view="parent"]');page.wait_for_selector('#privacyBtn');page.click('#privacyBtn');page.wait_for_selector('#privacyDialog[open]')
++    page.check('#acceptPrivacy');page.check('#acceptLocalRecord');page.click('#savePrivacy');page.wait_for_timeout(120)
++    privacy=page.evaluate("FLH_PRIVACY.get()")
++    assert_true(privacy['localRecordingConsent'] is True,'local recording consent not saved')
++    assert_true(privacy['cloudAudioConsent'] is False,'cloud audio must stay disabled')
++
++    print('PRIVACY_DONE',flush=True)
++    # Appearance and accessibility.
++    page.locator('[data-view="me"]').evaluate('el=>el.click()');page.wait_for_selector('.settings-grid')
++    page.locator('[data-setting="appearance"]').evaluate("el=>{
