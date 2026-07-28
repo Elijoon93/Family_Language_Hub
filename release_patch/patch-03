@@ -1,0 +1,99 @@
+t-adapter.js b/js/content-adapter.js
+new file mode 100644
+index 0000000..f3abc09
+--- /dev/null
++++ b/js/content-adapter.js
+@@ -0,0 +1,79 @@
++(function(){
++  'use strict';
++  const clone=x=>JSON.parse(JSON.stringify(x));
++  const text=x=>String(x??'');
++  const wordCount=s=>text(s).trim().split(/\s+/).filter(Boolean).length;
++  const profiles=()=>window.FLH_PROFILES||{};
++
++  function registry(){return window.FLH_CONTENT?.registry||null;}
++  function lessonsFor(ctx){
++    const r=registry();
++    if(!r)return[];
++    return r.find({profile:ctx.profile.id,language:ctx.language,level:ctx.level});
++  }
++  function chooseLesson(ctx,unit,dateKey){
++    const list=lessonsFor(ctx);if(!list.length)return null;
++    const hay=`${unit?.id||''} ${unit?.title||''} ${unit?.titleFa||''}`.toLowerCase();
++    const tagged=list.filter(l=>(l.tags||[]).some(t=>hay.includes(String(t).toLowerCase())));
++    const pool=tagged.length?tagged:list;
++    const seed=(window.FLH_CORE?.hashString||((x)=>x.length))(`${dateKey}|${ctx.profile.id}|${ctx.language}|${ctx.level}|${unit?.id||''}`);
++    return clone(pool[seed%pool.length]);
++  }
++  function visualItems(choices=[]){
++    const bank=window.FLH_VISUALS?.BANK||{};const all=Object.values(bank.en||{}).flat().concat(Object.values(bank.de||{}).flat());
++    return choices.map((c,i)=>{const id=typeof c==='string'?c:c.id||c.image||`item-${i}`;const hit=all.find(x=>x.id===id||x.word===id);return hit?{...hit,id}:{id,word:id,fa:id,emoji:['🟦','🟨','🟩','🟪'][i%4],color:['#dbeafe','#fef3c7','#dcfce7','#ede9fe'][i%4]};});
++  }
++  function genericPrompt(task){
++    const extras=[];
++    if(task.minWords)extras.push(`حداقل ${task.minWords} کلمه`);
++    if(task.maxWords)extras.push(`حداکثر ${task.maxWords} کلمه`);
++    if(task.minSeconds)extras.push(`${task.minSeconds} تا ${task.maxSeconds||task.minSeconds+30} ثانیه`);
++    return [task.promptFa,...extras].filter(Boolean).join(' · ');
++  }
++  function normaliseTask(task,lesson,ctx,unit,index,dateKey){
++    const base={
++      id:`${dateKey}-${ctx.profile.id}-${ctx.language}-${lesson.id}-${task.id}`,
++      authoredLessonId:lesson.id,sourceTaskType:task.type,profile:ctx.profile.id,targetLanguage:ctx.language,
++      unitId:unit.id,unitTitle:unit.titleFa,lessonTitle:lesson.titleFa,title:lesson.titleFa,
++      skill:task.skill||'vocabulary',minutes:Math.max(2,Math.round((lesson.minutes||20)/Math.max(4,lesson.tasks.length+2))),
++      prompt:task.promptFa||lesson.objectiveFa,criteria:(lesson.rubric?.criteria||[]).map(x=>x.fa),rubric:lesson.rubric,
++      safeguarding:lesson.safeguarding||{},seed:`${lesson.id}|${task.id}|${dateKey}`
++    };
++    if(task.type==='listen-mcq'||task.type==='dialogue-choice'||task.type==='scenario-choice')return{...base,type:'listen-mcq',audio:task.script||task.audio||task.promptFa,choices:task.choices||[],answer:task.answer};
++    if(task.type==='visual-choice')return{...base,type:'visual-choice',audio:task.answer,items:visualItems(task.choices||[]),answer:task.answer};
++    if(task.type==='sound-picture'){
++      const rounds=task.rounds||[];const round=rounds[index%Math.max(1,rounds.length)]||{};const ids=[round.answer,...rounds.map(x=>x.answer)].filter(Boolean);return{...base,type:'sound-picture',audio:round.audio||round.answer||'',items:visualItems([...new Set(ids)]),answer:round.answer||ids[0]};
++    }
++    if(task.type==='letter-trace'){
++      const letter=(task.letters||['A'])[index%(task.letters||['A']).length];return{...base,type:'trace-letter',letter,word:letter,translation:'ردگیری حرف',emoji:'✍️',model:letter};
++    }
++    if(task.type==='story-sequence'){
++      const items=task.items||task.steps||[];const steps=items.map((x,i)=>typeof x==='string'?{order:i+1,text:x,emoji:['1️⃣','2️⃣','3️⃣','4️⃣'][i]||'🔹'}:{order:x.order||i+1,text:x.text||x.label||text(x),emoji:x.emoji||'🔹'});return{...base,type:'story-sequence',steps,answer:task.answer||steps.map(x=>x.order).join(',')};
++    }
++    if(['record-speech','interview-card','role-play','mini-dialogue'].includes(task.type))return{...base,type:'record-speech',prompt:genericPrompt(task),model:(lesson.phrases||[])[0]||'',minSeconds:task.minSeconds||30,maxSeconds:task.maxSeconds||120,scaffold:task.scaffold||task.roles||lesson.phrases||[]};
++    if(['guided-writing','claim-evidence','method-paragraph','figure-caption','abstract-rewrite','motivation-paragraph','message','recipe-card','functional-message','functional-writing','story-writing','science-log','safety-plan','list-builder','receipt-task','profile-cards'].includes(task.type))return{...base,type:'writing',prompt:genericPrompt(task),criteria:[...(task.checklist||task.requiredTerms||task.sections||task.steps||[]),...(base.criteria||[])].slice(0,8),minWords:task.minWords||0,maxWords:task.maxWords||0};
++    if(['matching','drag-match','sound-sort','category-sort','drag-position','time-match','safe-unsafe-sort','animal-home-match','colour-sort'].includes(task.type)){
++      const pairs=task.pairs||Object.entries(task.categories||{}).flatMap(([k,vals])=>(vals||[]).map(v=>[v,k]));
++      const first=pairs[0]||['item','category'];return{...base,type:'listen-mcq',prompt:`${task.promptFa} — «${first[0]}» به کدام گزینه مربوط است؟`,audio:first[0],choices:[...new Set(pairs.map(x=>x[1]))],answer:first[1]};
++    }
++    if(['word-builder'].includes(task.type)){
++      const round=(task.rounds||[])[0]||{letters:[],answer:''};return{...base,type:'build',tokens:round.letters||[],answer:round.answer||''};
++    }
++    if(['table-interpretation','data-interpretation','concept-map','critical-reading','chart-reading','message-reading','receipt-check'].includes(task.type))return{...base,type:'reading',prompt:genericPrompt(task),explanation:JSON.stringify(task.data||task.rows||task.nodes||task.text||task.receipt||task.weak||'',null,2),question:(task.questions||[])[0]||'پیام و نتیجه اصلی را توضیح دهید.'};
++    if(['family-point','movement-rhyme','object-hunt','movement-game','puppet-play','listen-and-act'].includes(task.type))return{...base,type:'parent',prompt:task.promptFa,model:(lesson.phrases||[])[0]||'',gentle:!!task.gentle,parentGuided:true};
++    if(['family-tree','profile-cards'].includes(task.type))return{...base,type:'writing',prompt:genericPrompt(task),criteria:base.criteria};
++    return{...base,type:'writing',prompt:genericPrompt(task),criteria:base.criteria};
++  }
++  function planFromLesson(lesson,ctx,unit,dateKey,duration){
++    if(!lesson)return[];
++    const intro={id:`${dateKey}-${ctx.profile.id}-${ctx.language}-${lesson.id}-intro`,authoredLessonId:lesson.id,profile:ctx.profile.id,targetLanguage:ctx.language,unitId:unit.id,unitTitle:unit.titleFa,type:'lesson',skill:'vocabulary',minutes:2,title:'هدف درس',prompt:lesson.objectiveFa,explanation:lesson.canDo,model:(lesson.phrases||[])[0]||''};
++    const vocab={id:`${dateKey}-${ctx.profile.id}-${ctx.language}-${lesson.id}-vocab`,authoredLessonId:lesson.id,profile:ctx.profile.id,targetLanguage:ctx.language,unitId:unit.id,unitTitle:unit.titleFa,type:'flash',skill:'vocabulary',minutes:4,title:'واژگان در متن',prompt:(lesson.vocabulary?.[0]?.target||lesson.titleTarget),translation:(lesson.vocabulary?.[0]?.fa||lesson.titleFa),items:(lesson.vocabulary||[]).map((v,i)=>({id:`${lesson.id}-v${i}`,target:v.target,word:v.target,fa:v.fa,article:v.article,plural:v.plural}))};
++    const tasks=(lesson.tasks||[]).map((t,i)=>normaliseTask(t,lesson,ctx,unit,i,dateKey));
++    const mission={id:`${dateKey}-${ctx.profile.id}-${ctx.language}-${lesson.id}-mission`,authoredLessonId:lesson.id,profile:ctx.profile.id,targetLanguage:ctx.language,unitId:unit.id,unitTitle:unit.titleFa,type:ctx.profile.ageBand==='preschool'?'parent-check':'mission',skill:'speaking',minutes:5,title:'مأموریت واقعی',prompt:lesson.mission?.fa||'ماموریت واقعی درس را انجام دهید.',checklist:ctx.profile.ageBand==='preschool'?undefined:['هدف را انجام دادم','از عبارت‌های درس استفاده کردم','خروجی یا یادداشت ثبت کردم'],choices:ctx.profile.ageBand==='preschool'?['گوش داد','اشاره کرد','حرکت کرد','تکرار کرد','فقط مشاهده کرد']:undefined,gentle:ctx.profile.ageBand==='preschool'};
++    let result=[intro,vocab,...tasks,mission];
++    const max=ctx.profile.ageBand==='preschool'?6:duration<=15?5:duration<=25?7:10;
++    return result.slice(0,max);
++  }
++  function countWords(value){return wordCount(value);}
++  window.FLH_CONTENT_ADAPTER={lessonsFor,chooseLesson,normaliseTask,planFromLesson,countWords};
++})();
+diff --git a/js/engine.js b/js/engine.js
+index 4576cc2..af7d2ba 100644
+--- a/js/engine.js
++++ b/js/engine.js
+@@ -79,12 +79,17 @@
+     const base=active(),ctx={...base,...overrides};ctx.profile=overrides.profile||base.profile;ctx.language=overrides.language||base.language;ctx.level=overrides.level||base.level;ctx.duration=overrides.duration||base.duration;ctx.goal=overrides.goal||base.goal;ctx.progress=S().progress[ctx.profile.id][ctx.language];
+     if(!overrides.force&&!overrides.unit&&validPersistedPlan(ctx))return S().activePlan;
+     const unit=overrides.unit||currentUnit(ctx),priorities=CORE().selectPriorities(S(),ctx,unit),template=stepTemplate(ctx.profile);
+-    let ordered=[...template];
+-    if(ctx.profile.ageBand!=='preschool'&&(priorities.dueErrors.length||priorities.dueVocab.length))ordered=stableReviewFirst(ordered);
+-    let steps=ordered.map((s,i)=>makeTask(s,unit,ctx,i,priorities.seed));
+-    const max=ctx.profile.ageBand==='preschool'?6:ctx.duration<=15?5:ctx.duration<=25?7:10;
+-    if(max<steps.length){const must=ctx.profile.ageBand==='school'?['warmup','phonics','vocab','listen','speak','review','reflect']:['warmup','vocab','listen','speak','challenge','review'];steps=steps.filter(x=>must.includes(x.kind)).slice(0,max);}
+-    const plan={id:`session_${todayKey()}_${ctx.profile.id}_${ctx.language}_${unit.id}`,date:todayKey(),profile:ctx.profile.id,language:ctx.language,level:ctx.level,duration:ctx.duration,goal:ctx.goal,unit,steps,priorities:{primarySkill:priorities.primarySkill,secondarySkill:priorities.secondarySkill,dueVocab:
