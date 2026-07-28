@@ -1,0 +1,95 @@
+el.value='dark';el.dispatchEvent(new Event('change',{bubbles:true}))}");page.wait_for_timeout(100)
++    assert_true(page.evaluate("document.documentElement.dataset.theme")=='dark','dark mode not applied')
++    page.locator('[data-setting="highContrast"]').evaluate("el=>{el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}");page.wait_for_timeout(80)
++    assert_true(page.evaluate("document.documentElement.classList.contains('high-contrast')"),'high contrast not applied')
++
++    print('APPEARANCE_DONE',flush=True)
++    # Mobile view acceptance.
++    page.set_viewport_size({'width':390,'height':844});page.locator('[data-view="today"]').evaluate('el=>el.click()');page.wait_for_timeout(200)
++    scroll_width=page.evaluate("document.documentElement.scrollWidth")
++    client_width=page.evaluate("document.documentElement.clientWidth")
++    assert_true(scroll_width<=client_width+2,f'horizontal overflow {scroll_width}>{client_width}')
++    page.screenshot(path=str(ART/'v7-mobile-today.png'))
++    print('MOBILE_DONE',flush=True)
++
++    # Data isolation: complete a task for Arzoo and ensure Saeed attempts do not increase.
++    isolation=page.evaluate("""() => {
++      const before=FLH_STORE.get().attempts.filter(x=>x.profile==='saeed').length;
++      const p=FLH_PROFILES.arezoo;
++      FLH_STORE.update(s=>{s.active={...s.active,profile:'arezoo',language:'en',level:'A1',duration:25,goal:p.goals.en[0]};return s;},'iso');
++      FLH_STORE.clearPlan();const plan=FLH_ENGINE.buildDailyPlan({force:true});const t=plan.steps[0];
++      FLH_ENGINE.completeTask(t,{score:90,correct:true,minutes:2,completion:100});
++      const s=FLH_STORE.get();
++      return {before,after:s.attempts.filter(x=>x.profile==='saeed').length,arzoo:s.attempts.filter(x=>x.profile==='arezoo').length};
++    }""")
++    print('ISOLATION',isolation,flush=True)
++    assert_true(isolation['before']==isolation['after'] and isolation.get('arzoo',isolation.get('arezoo',0))>=1,'profile data isolation failed')
++
++    print('ISOLATION_DONE',flush=True)
++    if errors: raise AssertionError('\n'.join(errors))
++    (ART/'browser-v7-result.json').write_text(json.dumps({'status':'PASS','authored':authored,'screenshots':['v7-reports-desktop.png','v7-elena-alphabet.png','v7-aria-parent-session.png','v7-mobile-today.png']},ensure_ascii=False,indent=2),'utf-8')
++    context.close();browser.close()
++  print('BROWSER_V7_EMBEDDED_ACCEPTANCE_PASS')
++
++if __name__=='__main__': main()
+diff --git a/tests/pwa-static.test.js b/tests/pwa-static.test.js
+new file mode 100644
+index 0000000..223493d
+--- /dev/null
++++ b/tests/pwa-static.test.js
+@@ -0,0 +1,8 @@
++const fs=require('fs'),path=require('path');const root=path.resolve(__dirname,'..');let pass=0;function test(n,f){try{f();console.log('PASS',n);pass++}catch(e){console.error('FAIL',n,e.message);process.exitCode=1}}
++const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.webmanifest'),'utf8')),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
++test('manifest is installable-shaped',()=>{if(manifest.display!=='standalone'||!manifest.start_url||!manifest.scope)throw Error('manifest fields');if(!manifest.icons?.some(x=>x.sizes==='192x192')||!manifest.icons?.some(x=>x.sizes==='512x512'))throw Error('icons')});
++test('manifest icon files exist',()=>{for(const i of manifest.icons)if(!fs.existsSync(path.join(root,i.src.replace(/^\.\//,''))))throw Error(i.src)});
++test('service worker cache is versioned',()=>{if(!/family-language-os-v7/.test(sw))throw Error('cache version')});
++test('service worker asset list resolves',()=>{const matches=[...sw.matchAll(/['"]\.\/([^'"]+)['"]/g)].map(m=>m[1]).filter(x=>x&&!x.includes('?'));for(const f of matches){if(f===''||f==='index.html')continue;if(!fs.existsSync(path.join(root,f)))throw Error(`missing ${f}`)}});
++test('relative GitHub Pages paths only',()=>{if(/https?:\/\/[^'"\s]+(?:index|assets|js|css)/.test(sw))throw Error('absolute app asset')});
++if(!process.exitCode)console.log(`\n${pass} PWA static tests passed.`)
+diff --git a/tests/sync.mock.test.js b/tests/sync.mock.test.js
+new file mode 100644
+index 0000000..a119917
+--- /dev/null
++++ b/tests/sync.mock.test.js
+@@ -0,0 +1,25 @@
++const fs=require('fs'),vm=require('vm'),path=require('path');const root=path.resolve(__dirname,'..');
++const mem=new Map();global.window=global;global.navigator={userAgent:'MockBrowser/1.0',onLine:true};global.location={hostname:'localhost',protocol:'https:'};global.localStorage={getItem:k=>mem.has(k)?mem.get(k):null,setItem:(k,v)=>mem.set(k,String(v)),removeItem:k=>mem.delete(k),clear:()=>mem.clear(),key:i=>[...mem.keys()][i]||null,get length(){return mem.size}};global.CustomEvent=class{constructor(type,opts){this.type=type;this.detail=opts?.detail}};global.dispatchEvent=()=>true;global.atob=s=>Buffer.from(s,'base64').toString('binary');
++function load(f){vm.runInThisContext(fs.readFileSync(path.join(root,f),'utf8'),{filename:f})}
++['config.js','js/profiles.js','js/core.js','js/storage.js','js/auth.js','js/sync.js'].forEach(load);
++FLH_CONFIG.supabaseUrl='https://demo.supabase.co';FLH_CONFIG.supabaseAnonKey='public-key';
++const calls=[];let mode='normal';const remoteEvent={id:'remote_1',type:'lesson-complete',profile:'elena',language:'en',createdAt:'2026-07-29T10:00:00Z',updatedAt:'2026-07-29T10:00:00Z',score:88};
++global.fetch=async(url,opts={})=>{calls.push({url,method:opts.method||'GET',body:opts.body});let status=200,data=null;
++ if(url.includes('/auth/v1/token'))data={access_token:'not.a.jwt',refresh_token:'r',user:{id:'user-1',email:'family@example.com'}};
++ else if(url.includes('device_registry')&&opts.method==='POST'){if(mode==='third-device'){status=400;data={message:'Only two devices are allowed for this family account'}}else data=[{device_id:FLH_STORE.getDeviceId()}]}
++ else if(url.includes('device_registry')&&(!opts.method||opts.method==='GET'))data=[{device_id:FLH_STORE.getDeviceId(),device_name:'Mock',created_at:'2026-07-29T00:00:00Z',last_seen_at:'2026-07-29T00:00:00Z'}];
++ else if(url.includes('learning_events')&&(!opts.method||opts.method==='GET'))data=[{payload:remoteEvent}];
++ else if(url.includes('learning_snapshots')&&(!opts.method||opts.method==='GET'))data=[];
++ else data=[];
++ return{ok:status>=200&&status<300,status,async text(){return JSON.stringify(data)}};
++};
++let passed=0;async function test(name,fn){try{await fn();console.log('PASS',name);passed++}catch(e){console.error('FAIL',name,e);process.exitCode=1}}
++(async()=>{
++ await FLH_AUTH.signIn('family@example.com','password123');
++ await test('auth session configured',async()=>{if(!FLH_AUTH.getSession()?.access_token)throw Error('no session')});
++ await test('register device uses authenticated RLS request',async()=>{await FLH_SYNC.registerDevice('Device One');if(!calls.some(c=>c.url.includes('device_registry')&&c.method==='POST'))throw Error('missing device request')});
++ await test('push and pull preserve local plus remote events',async()=>{FLH_STORE.reset();FLH_STORE.addEvent('local-event',{id:'local_1',profile:'saeed',language:'en'});const result=await FLH_SYNC.syncNow();const ids=FLH_STORE.get().events.map(e=>e.id);if(!ids.includes('local_1')||!ids.includes('remote_1'))throw Error('merge lost event');if(result.pushed<1||result.events<1)throw Error('sync counts wrong')});
++ await test('snapshot upload covers eight profile-language records',async()=>{const call=[...calls].reverse().find(c=>c.url.includes('learning_snapshots')&&c.method==='POST');if(!call)throw Error('snapshot request missing');const rows=JSON.parse(call.body);if(rows.length!==8)throw Error('expected 8 snapshots')});
++ await test('third-device database rejection propagates',async()=>{mode='third-device';let ok=false;try{await FLH_SYNC.registerDevice('Third')}catch(e){ok=/Only two devices/.test(e.message)}if(!ok)throw Error('rejection not propagated');mode='normal'});
++ if(!process.exitCode)console.log(`\n${passed} sync mock tests passed.`);
++})();
+diff --git a/tests/v7.test.js b/tests/v7.test.js
+new file mode 100644
+index 0000000..518cd98
+--- /dev/null
++++ b/tests/v7.test.js
+@@ -0,0 +1,18 @@
++const fs=require('fs'),vm=require('vm'),path=require('path');
++const root=path.resolve(__dirname,'..');const memory=new Map();
++global.window=global;global.document={documentElement:{dataset:{},classList:{toggle(){},},style:{setProperty(){}}}};global.localStorage={getItem:k=>memory.has(k)?memory.get(k):null,setItem:(k,v)=>memory.set(k,String(v)),removeItem:k=>memory.delete(k),clear:()=>memory.clear(),key:i=>[...memory.keys()][i]||null,get length(){return memory.size;}};global.navigator={onLine:true,userAgent:'node-test'};global.location={protocol:'http:',hostname:'localhost'};global.CustomEvent=class{constructor(type,opts={}){this.type=type;this.detail=opts.detail}};global.dispatchEvent=()=>{};global.Blob=global.Blob||require('buffer').Blob;
++function load(rel){vm.runInThisContext(fs.readFileSync(path.join(root,rel),'utf8'),{filename:rel});}
++['config.js','js/profile-images.js','js/profiles.js','js/visuals.js','js/curriculum.js','content/packs/family-foundation-v1.js','js/content-registry.js','js/content-adapter.js','js/core.js','js/storage.js','js/privacy.js','js/engine.js'].forEach(load);
++let passed=0;function test(name,fn){try{fn();console.log('PASS',name);passed++;}catch(e){console.error('FAIL',name,e.stack||e);process.exitCode=1;}}function assert(x,m='assertion failed'){if(!x)throw new Error(m)}
++
++test('v7 config and schema are registered',()=>{assert(FLH_CONFIG.appVersion==='7.0.0-rc1');assert(FLH_CONFIG.schemaVersion===30);assert(FLH_STORE.KEY==='family_language_os_v7');});
++test('authored content is connected to daily plan',()=>{FLH_STORE.reset();const plan=FLH_ENGINE.buildDailyPlan({force:true});assert(plan.authoredLesson,'no authored lesson');assert(plan.steps.some(x=>x.authoredLessonId===plan.authoredLesson.id));assert(plan.id.includes(plan.authoredLesson.id));});
++test('all four active profiles can receive authored plans',()=>{for(const pid of [
