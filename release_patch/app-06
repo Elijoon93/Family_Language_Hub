@@ -1,0 +1,57 @@
+tedAt:new Date().toISOString(),localOnly:true});return st;},'recording-meta');
+    if(t.type==='parent-check')store.update(st=>{st.parentObservations.push({id:store.uid('obs'),profile:t.profile,language:t.targetLanguage,taskId:t.id,observations:result.observations||[],createdAt:new Date().toISOString()});return st;},'parent-observation');
+    $('#taskDialog').close();renderView();toast(`فعالیت ثبت شد · امتیاز ${saved.score}`,'good');setTimeout(openNextTask,200);
+  }
+
+  function openNextTask(){if(!plan)return;const ctx=engine.active(),next=plan.steps.find(x=>!ctx.progress.lessons[x.id]?.done);if(next&&confirm('گام بعدی را باز کنیم؟'))openTask(next.id);}
+  function normalise(s){return(s||'').toLowerCase().replace(/[.,!?؛،]/g,'').replace(/\s+/g,' ').trim();}
+
+  function openUnit(id){const ctx=engine.active(),u=engine.allUnits(ctx.language,ctx.profile.id).find(x=>x.id===id);if(!u)return;store.update(s=>{s.progress[ctx.profile.id][ctx.language].currentUnit=u.id;s.active.level=u.level;return s;},'select-unit');store.clearPlan();plan=engine.buildDailyPlan({unit:u,level:u.level,force:true});store.savePlan(plan);switchView('today');toast(`واحد «${u.titleFa}» فعال شد`,'good');}
+  function launchPractice(id){
+    const ctx=engine.active();
+    if(id==='errorbook'){showErrorBook();return;}
+    if(id==='diagnostic'){showDiagnostic(ctx);return;}
+    if(id==='vocab'&&showVocabularyReview(ctx))return;
+    if(id==='alphabet'){showAlphabetLab(ctx.language);return;}
+    if(id==='visual-match'||id==='picture-talk'){showVisualPractice(ctx,id);return;}
+    if(id==='sound-match'){showVisualPractice(ctx,'sound');return;}
+    if(id==='memory'){showMemoryPractice(ctx);return;}
+    if(id==='story-sequence'||id==='story'){showStoryPractice(ctx);return;}
+    if(id==='movement-game'||id==='songs'){showMovementPractice(ctx);return;}
+    if(id==='parent-session'){plan=engine.buildDailyPlan({force:true});store.savePlan(plan);openFirstIncomplete();return;}
+    const current=engine.currentUnit(ctx);const fake=makePracticeTask(id,current,ctx);renderTaskDialog(fake);$('#taskDialog').showModal();
+  }
+  function makePracticeTask(id,u,ctx){const ph=engine.phrasesFor(u,ctx.profile,ctx.language),pair=ph[0]||{target:u.title,fa:u.titleFa},base={id:`practice-${id}-${Date.now()}`,unitId:u.id,unitTitle:u.titleFa,targetLanguage:ctx.language,minutes:10,skill:id==='listening'?'listening':id==='writing'?'writing':id==='grammar'?'grammar':id==='vocab'?'vocabulary':'speaking',profile:ctx.profile.id};if(id==='vocab')return{...base,type:'flash',title:'مرور واژگان',prompt:pair.target,translation:pair.fa,items:ph};if(id==='listening')return{...base,type:'listen-mcq',title:'شنیدار',prompt:'گوش کنید و معنی درست را انتخاب کنید.',audio:pair.target,answer:pair.fa,choices:engine.shuffle([pair.fa,...ph.slice(1).map(x=>x.fa),'گزینه دیگر']).slice(0,4)};if(id==='writing')return{...base,type:'writing',title:'کارگاه نوشتن',prompt:`یک خروجی کاربردی درباره «${u.titleFa}» بنویسید.`,criteria:['هدف روشن','ساختار مناسب سطح','واژگان واحد','بازبینی']};if(id==='grammar')return{...base,type:'lesson',title:'گرامر در عمل',prompt:`ساختار: ${u.grammar}`,explanation:`سه مثال بسازید و یکی را در یک موقعیت واقعی «${u.titleFa}» استفاده کنید.`,model:pair.target};if(id==='research'||id.startsWith('research-'))return{...base,type:'speak',title:'آزمایشگاه پژوهش',prompt:'پژوهش خود را با ساختار مسئله، روش، نتیجه، نوآوری و محدودیت توضیح دهید.',model:'My research examines whether risk-prioritisation decisions remain stable under defensible model assumptions.'};if(id==='ielts'||id.startsWith('ielts-'))return{...base,type:'writing',title:'IELTS Practice',prompt:'Some people believe technology always improves workplace safety. To what extent do you agree or disagree?',criteria:['موضع روشن','دو استدلال توسعه‌یافته','مثال مرتبط','نتیجه‌گیری']};if(id==='shopping')return{...base,type:'mission',title:'ماموریت خرید',prompt:'فهرست خرید بنویسید، مقدار و قیمت بپرسید، روش پرداخت را مشخص و رسید را کنترل کنید.',checklist:['۵ قلم کالا','۲ عبارت مقدار','یک سؤال قیمت','یک سؤال پرداخت','کنترل رسید']};return{...base,type:'speak',title:'تمرین گفتار',prompt:`درباره «${u.titleFa}» پاسخ بدهید.`,model:pair.target};}
+  function visualBase(ctx,id,skill='vocabulary',minutes=7){
+    const unit=engine.currentUnit(ctx);return{id:`visual-${id}-${Date.now()}`,unitId:unit.id,unitTitle:unit.titleFa,targetLanguage:ctx.language,minutes,skill,profile:ctx.profile.id};
+  }
+  function showVisualPractice(ctx,mode='visual'){
+    const unit=engine.currentUnit(ctx),set=FLH_VISUALS.pick(unit,ctx.language,ctx.profile.id==='aria'?3:4),target=set.items[0],base=visualBase(ctx,mode,'listening',ctx.profile.id==='aria'?4:8);
+    const task={...base,type:mode==='sound'?'sound-picture':'visual-choice',title:mode==='sound'?'گوش کن و تصویر را پیدا کن':'تصویر و واژه',prompt:mode==='sound'?'واژه را گوش کن و تصویر درست را لمس کن.':`تصویر «${target.word}» را پیدا کن.`,audio:target.word,answer:target.id,items:engine.shuffle(set.items),gentle:ctx.profile.id==='aria'};
+    renderTaskDialog(task);$('#taskDialog').showModal();
+  }
+  function showMemoryPractice(ctx){
+    const unit=engine.currentUnit(ctx),set=FLH_VISUALS.pick(unit,ctx.language,4),task={...visualBase(ctx,'memory','vocabulary',10),type:'memory',title:'بازی حافظه تصویر و واژه',prompt:'کارت‌ها را باز کن و هر تصویر را با واژه خودش جفت کن.',items:set.items};
+    renderTaskDialog(task);$('#taskDialog').showModal();
+  }
+  function showStoryPractice(ctx){
+    const unit=engine.currentUnit(ctx),steps=FLH_VISUALS.story(ctx.language,unit.order),task={...visualBase(ctx,'story','reading',10),type:'story-sequence',title:'داستان تصویری',prompt:'کارت‌ها را به ترتیب منطقی داستان انتخاب کن.',steps:engine.shuffle(steps),answer:steps.map(x=>x.order).join(',')};
+    renderTaskDialog(task);$('#taskDialog').showModal();
+  }
+  function showMovementPractice(ctx){
+    const unit=engine.currentUnit(ctx),[phrase,fa,emoji]=FLH_VISUALS.movement(ctx.language,unit.order),task={...visualBase(ctx,'movement','listening',5),type:'movement',title:'واژه و حرکت',prompt:`با هم انجام دهید: ${fa}`,model:phrase,emoji};
+    renderTaskDialog(task);$('#taskDialog').showModal();
+  }
+  function showVocabularyReview(ctx){
+    const cards=FLH_CORE.dueCards(store.get(),ctx.profile.id,ctx.language);if(!cards.length)return false;
+    const render=()=>{const remaining=FLH_CORE.dueCards(store.get(),ctx.profile.id,ctx.language),card=remaining[0];if(!card){$('#taskDialog').close();toast('مرورهای سررسیدشده تمام شد','good');renderView();return;}
+      $('#taskDialogBody').innerHTML=`<div class="dialog-shell"><header class="dialog-head"><div><span class="badge">SRS · ${remaining.length} کارت</span><h2>مرور فاصله‌دار</h2></div><button class="close-btn" id="closeTask">×</button></header><div class="dialog-body"><div class="movement-card"><span>🧠</span><h2 class="ltr">${escapeHTML(card.front)}</h2><button id="revealCard" class="primary-btn">نمایش معنی</button><p id="cardBack" class="hidden">${escapeHTML(card.back||'—')}</p></div><div id="qualityRow" class="hidden" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px"><button class="secondary-btn" data-card-q="1">فراموش کردم</button><button class="secondary-btn" data-card-q="3">سخت بود</button><button class="secondary-btn" data-card-q="4">خوب بود</button><button class="primary-btn" data-card-q="5">کاملاً بلد بودم</button></div></div></div>`;
+      $('#closeTask').onclick=()=>$('#taskDialog').close();$('#revealCard').onclick=()=>{$('#cardBack').classList.remove('hidden');$('#qualityRow').classList.remove('hidden');};$$('[data-card-q]').forEach(b=>b.onclick=()=>{engine.reviewVocab(card.id,+b.dataset.cardQ);render();});};
+    render();$('#taskDialog').showModal();return true;
+  }
+  function showDiagnostic(ctx){
+    if(ctx.profile.id==='aria'){toast('برای آریا ارزیابی رسمی استفاده نمی‌شود','bad');return;}
+    const unit=engine.currentUnit(ctx),phrases=engine.phrasesFor(unit,ctx.profile,ctx.language),p1=phrases[0]||{target:unit.title,fa:unit.titleFa},p2=phrases[1]||p1;
+    const wrong=[...new Set(phrases.slice(1).map(x=>x.fa).filter(x=>x!==p1.fa))].slice(0,2);const choices=engine.shuffle([p1.fa,...wrong,'هیچ‌کدام'],`diagnostic-${ctx.profile.id}-${ctx.language}-${ctx.level}`);
+    $('#taskDialogBody').innerHTML=`<div class="dialog-shell"><header class="dialog-head"><div><span class="badge">${ctx.level} · ارزیابی هسته</span><h2>ارزیابی کوتاه چهارمهارتی</h2><small>این آزمون جایگزین آزمون رسمی نیست؛ برای تنظیم مسیر داخلی برنامه است.</small></div><button class="close-btn" id="closeTask">×</button></header><div class="dialog-body"><div class="stack"><div class="task-prompt"><strong>۱. شنیدار و واژگان</strong><p>عبارت را گوش کن و معنی درست را انتخاب کن.</p><button class="secondary-btn" id="diagSpeak">🔊 پخش</button><div class="answer-grid">${choices.map(c=>`<label class="answer-option"><input type="radio" name="diagListen" value="${escapeAttr(c)}"> ${escapeHTML(c)}</label>`).join('')}</div></div><div class="task-prompt"><strong>۲. نوشتن/ساخت جمله</strong><p class="ltr">${escapeHTML(p2.target)}</p><textarea id="diagText" class="text-answer" placeholder="معنی یا یک جمله مرتبط بنویسید…"></textarea></div><div class="task-prompt"><strong>۳. گفتار</strong><p>عبارت بالا را بگویید و میزان استقلال خود را انتخاب کنید.</p><input id="diagSpeaking" type="range" min="0" max="100" step="10" value="60"><small>۰ = نتوانستم · ۱۰۰ = روان و مستقل</small></div><div class="task-prompt"><strong>۴. خواندن</strong><p class="ltr">${escapeHTML(p1.target)} ${escapeHTML(p2.target)}</p><input id="diagReading" type="range" min="0" max="100" step="10" value="60"></div></div></div><footer class="dialog-actions"><button class="primary-btn" id="saveDiagnostic">ثبت ارزیابی</button></footer></div>`;
+    $('#closeTask').onclick=()=>$('#taskDialog').close();$('#diagSpeak').onclick=()=>speak(p1.target);$('#saveDiagnostic').onclick=()=>{const selected=$('input[name="diagListen"]:checked')?.value;if(!selected){toast('پاسخ شنیدار را انتخاب کن
