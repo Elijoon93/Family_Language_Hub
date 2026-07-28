@@ -1,0 +1,79 @@
+'')}</div><div id="builtAnswer" class="answer-option ltr" style="margin-top:12px;min-height:45px"></div></div><div id="taskFeedback"></div>`;
+    if(t.type==='mission')return`<div class="task-prompt"><p>${t.prompt}</p></div><div class="answer-grid">${t.checklist.map((x,i)=>`<label class="answer-option"><input type="checkbox" data-check> ${x}</label>`).join('')}</div><textarea id="taskText" class="text-answer" placeholder="خروجی یا یادداشت ماموریت…"></textarea>`;
+    if(t.type==='parent-check')return`<div class="task-prompt"><p>${t.prompt}</p></div><div class="answer-grid">${t.choices.map(x=>`<label class="answer-option"><input type="checkbox" data-check> ${x}</label>`).join('')}</div>`;
+    if(t.type==='parent'||t.type==='note')return`<div class="task-prompt"><p>${t.prompt}</p>${t.model?`<p class="ltr"><strong>${t.model}</strong></p><button class="secondary-btn" data-dialog-speak="${encodeURIComponent(t.model)}">🔊 پخش آرام</button>`:''}</div>`;
+    return`<div class="task-prompt"><p>${t.prompt}</p></div>`;
+  }
+  function bindTaskControls(t){
+    $$('[data-dialog-speak]').forEach(b=>b.onclick=()=>speak(decodeURIComponent(b.dataset.dialogSpeak)));
+    const startRecord=$('#startRecordBtn'),stopRecord=$('#stopRecordBtn');
+    if(startRecord)startRecord.onclick=async()=>{try{activeRecording=null;await FLH_RECORDER.start({profile:t.profile,language:t.targetLanguage,taskId:t.id,unitId:t.unitId});startRecord.disabled=true;stopRecord.disabled=false;$('#recordDot').classList.add('live');$('#recordStatus').textContent='در حال ضبط…';}catch(e){if(e.message==='recording-consent-required')openPrivacy();toast(e.message==='recording-consent-required'?'ابتدا رضایت ضبط محلی را ثبت کنید.':'میکروفن در دسترس نیست.','bad');}};
+    if(stopRecord)stopRecord.onclick=async()=>{try{activeRecording=await FLH_RECORDER.stop();startRecord.disabled=false;stopRecord.disabled=true;$('#recordDot').classList.remove('live');$('#recordStatus').textContent=`ضبط شد · ${activeRecording.durationSeconds} ثانیه`;const audio=$('#recordPlayback');audio.src=activeRecording.url;audio.classList.remove('hidden');}catch(e){toast(e.message||String(e),'bad');}};
+    $$('[data-answer]').forEach(b=>b.onclick=()=>{
+      const ok=b.dataset.answer===t.answer;$$('[data-answer]').forEach(x=>x.disabled=true);
+      b.style.borderColor=ok?'#22c55e':'#ef4444';
+      $('#taskFeedback').innerHTML=`<div class="feedback ${ok?'good':'bad'}">${ok?'درست است.':'پاسخ درست: '+escapeHTML(t.answer)}</div>`;
+      b.dataset.score=ok?'100':'35';
+    });
+    $$('[data-visual-answer]').forEach(b=>b.onclick=()=>{
+      const ok=b.dataset.visualAnswer===t.answer;
+      $$('[data-visual-answer]').forEach(x=>{x.disabled=true;x.classList.toggle('correct',x.dataset.visualAnswer===t.answer);});
+      b.classList.add(ok?'selected-good':'selected-bad');b.dataset.score=ok?'100':(t.gentle?'80':'40');
+      $('#taskFeedback').innerHTML=`<div class="feedback ${ok?'good':'bad'}">${ok?'آفرین؛ تصویر درست انتخاب شد.':t.gentle?'اشکالی ندارد؛ تصویر درست روشن شد.':'دوباره به واژه گوش کن و تصویر سبز را ببین.'}</div>`;
+      
+    });
+    let built=[];$$('[data-token]').forEach(b=>b.onclick=()=>{built.push(t.tokens[+b.dataset.token]);b.disabled=true;$('#builtAnswer').textContent=built.join(' ');$('#builtAnswer').dataset.value=built.join(' ');});
+    bindTraceCanvas(t);
+    bindMemory(t);
+    bindStory(t);
+  }
+  function bindTraceCanvas(t){
+    const canvas=$('#traceCanvas');if(!canvas)return;
+    const ctx=canvas.getContext('2d');let drawing=false,points=0;
+    const fit=()=>{const r=canvas.getBoundingClientRect();canvas.width=Math.max(320,Math.floor(r.width*devicePixelRatio));canvas.height=Math.max(220,Math.floor(r.height*devicePixelRatio));ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);drawGuide();};
+    const drawGuide=()=>{const w=canvas.clientWidth||760,h=canvas.clientHeight||360;ctx.clearRect(0,0,w,h);ctx.save();ctx.globalAlpha=.13;ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--primary')||'#4f46e5';ctx.font=`900 ${Math.min(h*.78,w*.55)}px Arial`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t.letter,w/2,h/2);ctx.restore();ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--primary')||'#4f46e5';ctx.lineWidth=8;ctx.lineCap='round';ctx.lineJoin='round';};
+    const pos=e=>{const r=canvas.getBoundingClientRect(),p=e.touches?.[0]||e;return{x:p.clientX-r.left,y:p.clientY-r.top};};
+    const start=e=>{drawing=true;const p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault();};
+    const move=e=>{if(!drawing)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();points++;canvas.dataset.drawn=points>8?'yes':'';$('#traceStatus').textContent=points>8?'ردگیری ثبت شد؛ حالا واژه را بلند بگو.':'ادامه بده…';e.preventDefault();};
+    const end=()=>{drawing=false;};
+    canvas.addEventListener('pointerdown',start);canvas.addEventListener('pointermove',move);window.addEventListener('pointerup',end,{once:false});
+    $('#clearTrace').onclick=()=>{points=0;canvas.dataset.drawn='';drawGuide();$('#traceStatus').textContent='با انگشت یا ماوس روی حرف حرکت کن.';};
+    requestAnimationFrame(fit);
+  }
+  function bindMemory(t){
+    const board=$('#memoryBoard');if(!board)return;let open=[],matched=0,moves=0;
+    $$('.memory-card',board).forEach(card=>card.onclick=()=>{
+      if(card.classList.contains('matched')||open.includes(card)||open.length===2)return;
+      card.classList.add('open');open.push(card);
+      if(open.length===2){moves++;const ok=open[0].dataset.memoryKey===open[1].dataset.memoryKey&&open[0].dataset.memoryKind!==open[1].dataset.memoryKind;
+        setTimeout(()=>{if(ok){open.forEach(x=>x.classList.add('matched'));matched+=2;}else open.forEach(x=>x.classList.remove('open'));open=[];board.dataset.score=matched===board.children.length?String(Math.max(60,100-(moves-4)*5)):board.dataset.score||'';if(matched===board.children.length)$('#taskFeedback').innerHTML='<div class="feedback good">همه جفت‌ها پیدا شدند.</div>';},450);
+      }
+    });
+  }
+  function bindStory(t){
+    const board=$('#storyBoard'),strip=$('#storySequence');if(!board||!strip)return;const order=[];
+    $$('.story-card',board).forEach(card=>card.onclick=()=>{if(card.disabled)return;card.disabled=true;card.classList.add('chosen');order.push(+card.dataset.storyOrder);strip.innerHTML=order.map((x,i)=>`<span>${i+1} ← کارت ${x}</span>`).join('');strip.dataset.value=order.join(',');if(order.length===t.steps.length){const ok=strip.dataset.value===t.answer;strip.dataset.score=ok?'100':'45';$('#taskFeedback').innerHTML=`<div class="feedback ${ok?'good':'bad'}">${ok?'ترتیب داستان درست است.':'ترتیب درست را یک‌بار دیگر با متن کارت‌ها مرور کن.'}</div>`;}});
+  }
+  function finishTask(t){
+    let score=100,result={};const ans=$('[data-answer][data-score]');
+    if(t.type==='listen-mcq'&&!ans){toast('ابتدا یک پاسخ انتخاب کنید','bad');return;}
+    if(ans){score=+ans.dataset.score;result.userAnswer=ans.dataset.answer;result.correctAnswer=t.answer;result.correct=ans.dataset.answer===t.answer;}
+    if(t.type==='visual-choice'||t.type==='sound-picture'){
+      const selected=$('[data-visual-answer][data-score]');
+      if(!selected){if(t.gentle){score=75;result.observation='مشاهده بدون انتخاب';result.correct=true;}else{toast('ابتدا یک تصویر انتخاب کن','bad');return;}}
+      else{score=+selected.dataset.score;result.userAnswer=selected.dataset.visualAnswer;result.correctAnswer=t.answer;result.correct=selected.dataset.visualAnswer===t.answer;}
+    }
+    if(t.type==='trace-letter'){if($('#traceCanvas')?.dataset.drawn!=='yes'){toast('ابتدا کمی روی حرف ردگیری کن','bad');return;}score=100;result.letter=t.letter;result.correct=true;}
+    if(t.type==='memory'){const board=$('#memoryBoard');if(!board?.dataset.score){toast('بازی حافظه را کامل کن','bad');return;}score=+board.dataset.score;result.pairs=t.items?.length||0;result.totalPairs=t.items?.length||0;result.correct=score>=80;}
+    if(t.type==='story-sequence'){const strip=$('#storySequence');if(!strip?.dataset.score){toast('همه کارت‌های داستان را انتخاب کن','bad');return;}score=+strip.dataset.score;result.sequence=strip.dataset.value;result.userAnswer=strip.dataset.value;result.correctAnswer=t.answer;result.correct=strip.dataset.value===t.answer;}
+    if(t.type==='build'){const v=$('#builtAnswer')?.dataset.value||'';score=normalise(v)===normalise(t.answer)?100:45;result.userAnswer=v;result.correctAnswer=t.answer;result.correct=score===100;}
+    if(t.type==='record-speech'){if(!activeRecording){toast('ابتدا یک ضبط محلی ثبت کنید.','bad');return;}const min=t.minSeconds||20,max=t.maxSeconds||180,d=activeRecording.durationSeconds;score=d>=min&&d<=max?90:d>=Math.max(10,min*.6)?72:55;result.recordingId=activeRecording.id;result.durationSeconds=d;result.correct=score>=70;}
+    const text=$('#taskText')?.value?.trim();
+    if(['writing','recall','reflection','review','reading','mission'].includes(t.type)&&!text){toast('یک پاسخ کوتاه ثبت کنید.','bad');return;}
+    if(t.type==='mission'){const checks=$$('[data-check]:checked').length;score=Math.round(checks/Math.max(1,t.checklist.length)*70+(text?30:0));result.completed=checks===t.checklist.length;result.correct=score>=70;}
+    if(t.type==='parent-check'){score=100;result.observations=$$('[data-check]:checked').map(x=>x.parentElement.textContent.trim());result.parentGuided=true;result.correct=true;}
+    if(t.type==='movement'||t.type==='echo'||t.type==='parent'||t.type==='note'){score=100;result.parentGuided=true;result.correct=true;}
+    if(['writing','recall','reflection','review','reading','lesson','speak','flash'].includes(t.type)&&result.correct===undefined)result.correct=score>=70;
+    result.text=text||'';result.confidence=score>=90?85:score>=70?70:45;
+    const saved=engine.completeTask(t,{score,minutes:t.minutes,...result});
+    if(result.recordingId)store.update(st=>{st.recordings.push({id:result.recordingId,profile:t.profile,language:t.targetLanguage,taskId:t.id,durationSeconds:result.durationSeconds,crea
