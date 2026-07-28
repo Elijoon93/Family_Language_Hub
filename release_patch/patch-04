@@ -1,0 +1,116 @@
+priorities.dueVocab.length,dueErrors:priorities.dueErrors.length},createdAt:new Date().toISOString(),engineVersion:CORE().version};
++    const adapter=window.FLH_CONTENT_ADAPTER;
++    const authoredLesson=adapter?.chooseLesson(ctx,unit,todayKey())||null;
++    let steps=authoredLesson?adapter.planFromLesson(authoredLesson,ctx,unit,todayKey(),ctx.duration):[];
++    if(!steps.length){
++      let ordered=[...template];
++      if(ctx.profile.ageBand!=='preschool'&&(priorities.dueErrors.length||priorities.dueVocab.length))ordered=stableReviewFirst(ordered);
++      steps=ordered.map((s,i)=>makeTask(s,unit,ctx,i,priorities.seed));
++      const max=ctx.profile.ageBand==='preschool'?6:ctx.duration<=15?5:ctx.duration<=25?7:10;
++      if(max<steps.length){const must=ctx.profile.ageBand==='school'?['warmup','phonics','vocab','listen','speak','review','reflect']:['warmup','vocab','listen','speak','challenge','review'];steps=steps.filter(x=>must.includes(x.kind)).slice(0,max);}
++    }
++    const plan={id:`session_${todayKey()}_${ctx.profile.id}_${ctx.language}_${unit.id}_${authoredLesson?.id||'core'}`,date:todayKey(),profile:ctx.profile.id,language:ctx.language,level:ctx.level,duration:ctx.duration,goal:ctx.goal,unit,authoredLesson,steps,priorities:{primarySkill:priorities.primarySkill,secondarySkill:priorities.secondarySkill,dueVocab:priorities.dueVocab.length,dueErrors:priorities.dueErrors.length},createdAt:new Date().toISOString(),engineVersion:CORE().version};
+     return plan;
+   }
+   function stableReviewFirst(template){const review=template.find(x=>x[0]==='review');return review?[review,...template.filter(x=>x!==review)]:template;}
+diff --git a/js/privacy.js b/js/privacy.js
+new file mode 100644
+index 0000000..7a448b0
+--- /dev/null
++++ b/js/privacy.js
+@@ -0,0 +1,14 @@
++(function(){
++  'use strict';
++  const KEY='flh_privacy_v1';
++  const defaults={accepted:false,acceptedAt:null,localRecordingConsent:false,cloudAudioConsent:false,analyticsConsent:false};
++  function load(){try{return{...defaults,...JSON.parse(localStorage.getItem(KEY)||'{}')}}catch(_e){return{...defaults}}}
++  let state=load();
++  function save(){localStorage.setItem(KEY,JSON.stringify(state));return state;}
++  function accept(options={}){state={...state,...options,accepted:true,acceptedAt:new Date().toISOString(),analyticsConsent:false};return save();}
++  function revoke(){state={...defaults};return save();}
++  function canRecord(profile){return state.localRecordingConsent&&profile!=='aria';}
++  function canUploadAudio(){return false;}
++  function noticeFa(){return 'اطلاعات یادگیری روی دستگاه ذخیره می‌شود. صدای کودکان به‌صورت پیش‌فرض فقط محلی است و هیچ فایل صوتی خودکار به فضای ابری ارسال نمی‌شود.';}
++  window.FLH_PRIVACY={get:()=>({...state}),accept,revoke,canRecord,canUploadAudio,noticeFa};
++})();
+diff --git a/js/recorder.js b/js/recorder.js
+new file mode 100644
+index 0000000..2133762
+--- /dev/null
++++ b/js/recorder.js
+@@ -0,0 +1,27 @@
++(function(){
++  'use strict';
++  const DB='family_language_os_media',STORE='recordings';
++  let recorder=null,chunks=[],stream=null,startedAt=0,currentMeta=null;
++  function supported(){return!!(navigator.mediaDevices?.getUserMedia&&window.MediaRecorder&&window.indexedDB);}
++  function db(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB,1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(STORE))req.result.createObjectStore(STORE,{keyPath:'id'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
++  async function put(row){const d=await db();return new Promise((resolve,reject)=>{const tx=d.transaction(STORE,'readwrite');tx.objectStore(STORE).put(row);tx.oncomplete=()=>resolve(row);tx.onerror=()=>reject(tx.error);});}
++  async function list(filter={}){const d=await db();return new Promise((resolve,reject)=>{const req=d.transaction(STORE).objectStore(STORE).getAll();req.onsuccess=()=>resolve(req.result.filter(x=>(!filter.profile||x.profile===filter.profile)&&(!filter.language||x.language===filter.language)));req.onerror=()=>reject(req.error);});}
++  async function remove(id){const d=await db();return new Promise((resolve,reject)=>{const tx=d.transaction(STORE,'readwrite');tx.objectStore(STORE).delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}
++  async function clear(){const d=await db();return new Promise((resolve,reject)=>{const tx=d.transaction(STORE,'readwrite');tx.objectStore(STORE).clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}
++  async function start(meta={}){
++    if(!supported())throw new Error('recording-not-supported');
++    if(!window.FLH_PRIVACY?.canRecord(meta.profile))throw new Error('recording-consent-required');
++    if(recorder)throw new Error('recording-already-active');
++    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
++    const preferred=['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(x=>MediaRecorder.isTypeSupported?.(x));
++    recorder=new MediaRecorder(stream,preferred?{mimeType:preferred}:undefined);chunks=[];startedAt=Date.now();currentMeta=meta;
++    recorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data);};
++    recorder.start(250);return{startedAt:new Date(startedAt).toISOString()};
++  }
++  async function stop(){
++    if(!recorder)throw new Error('recording-not-active');
++    const r=recorder;return new Promise((resolve,reject)=>{r.onerror=e=>reject(e.error||e);r.onstop=async()=>{try{const blob=new Blob(chunks,{type:r.mimeType||'audio/webm'});const id=`rec_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;const durationSeconds=Math.max(1,Math.round((Date.now()-startedAt)/1000));const row={id,blob,mimeType:blob.type,size:blob.size,durationSeconds,createdAt:new Date().toISOString(),localOnly:true,...currentMeta};await put(row);stream?.getTracks().forEach(t=>t.stop());stream=null;recorder=null;chunks=[];currentMeta=null;resolve({...row,blob,url:URL.createObjectURL(blob)});}catch(e){reject(e);}};r.stop();});
++  }
++  function cancel(){try{recorder?.stop();}catch(_e){}stream?.getTracks().forEach(t=>t.stop());recorder=null;stream=null;chunks=[];currentMeta=null;}
++  window.FLH_RECORDER={supported,start,stop,cancel,list,remove,clear,isRecording:()=>!!recorder};
++})();
+diff --git a/js/release.js b/js/release.js
+new file mode 100644
+index 0000000..70529a9
+--- /dev/null
++++ b/js/release.js
+@@ -0,0 +1,9 @@
++(function(){
++  'use strict';
++  let deferredInstall=null;
++  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;window.dispatchEvent(new Event('flh-install-ready'));});
++  async function install(){if(!deferredInstall)throw new Error('install-not-ready');deferredInstall.prompt();const result=await deferredInstall.userChoice;deferredInstall=null;return result;}
++  async function register(){if(!('serviceWorker'in navigator)||location.protocol==='file:')return null;const reg=await navigator.serviceWorker.register('./sw.js');if(reg.waiting)window.dispatchEvent(new CustomEvent('flh-update-ready',{detail:reg}));reg.addEventListener('updatefound',()=>{const w=reg.installing;w?.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)window.dispatchEvent(new CustomEvent('flh-update-ready',{detail:reg}));});});return reg;}
++  async function applyUpdate(reg){reg?.waiting?.postMessage({type:'SKIP_WAITING'});setTimeout(()=>location.reload(),500);}
++  window.FLH_RELEASE={register,install,applyUpdate,canInstall:()=>!!deferredInstall};
++})();
+diff --git a/js/storage.js b/js/storage.js
+index f545c7d..7c6b57d 100644
+--- a/js/storage.js
++++ b/js/storage.js
+@@ -1,7 +1,7 @@
+ (function(){
+   'use strict';
+-  const KEY='family_language_os_v6';
+-  const OLD_KEYS=['family_language_hub_v5','family_language_hub_v4','family_language_hub_v3'];
++  const KEY='family_language_os_v7';
++  const OLD_KEYS=['family_language_os_v6','family_language_hub_v5','family_language_hub_v4','family_language_hub_v3'];
+   const schema=window.FLH_CONFIG?.schemaVersion||24;
+   const version=window.FLH_CONFIG?.appVersion||'6.1.0-core';
+   const core=()=>window.FLH_CORE;
+@@ -21,10 +21,10 @@
+     return{
+       schema,version,createdAt:now(),updatedAt:now(),
+       active:{profile:'saeed',language:'en',level:'B1',duration:45,goal:'IELTS و اپلای دکتری',view:'today'},
+-      activePlan:null,progress,events:[],sessions:[],attempts:[],vocab:[],errorBook:[],notes:[],shopping:[],diagnostics:[],missions:[],
+-      settings:{uiLanguage:'fa',sound:true,autoSpeak:false,focusPreset:25,weeklyGoalMinutes:300,childSafeMode:true,adaptiveMode:true,resumeSession:true},
++      activePlan:null,progress,events:[],sessions:[],attempts:[],vocab:[],errorBook:[],notes:[],shopping:[],diagnostics:[],missions:[],recordings:[],parentObservations:[],
++      settings:{uiLanguage:'fa',sound:true,autoSpeak:false,speechRate:.9,focusPreset:25,weeklyGoalMinutes:300,childSafeMode:true,adaptiveMode:true,resumeSession:true,appearance:'system',highContrast:false,fontScale:1,privacyAccepted:false,localRecordingConsent:false},
+       devices:{deviceId:getDeviceId(),registered:[],max:2},
+-      sync:{enabled:false,lastSyncAt:null,pending:0,status:'local',conflicts:[],lastMergeAt:null}
++      sync:{enabled:false,lastSyncAt:null,pending:0,status:'local',conflicts:[],lastMergeAt:null,ackedEventIds:[],lastError:null}
+     };
+   }
+   function normalizeProgress(p={}){
+@@ -36,7 +36,7 @@
+     out.schema=schema;out.version=version;out.updatedAt=now();out.active={...d.active,...(state.active||{})};out.settings={...d.settings,...(state.settings||{})};
+     out.devices={...d.devices,...(state.devices||{}),deviceId:getDeviceId()};out.sync={...d.sync,...(state.sync||{})};out.progress=out.progress||{};
+     Object.keys(FLH_PROFILES).forEach(pid=>{out.progress[pid]=out.progress[pid]||{};['en','de'].forEach(lang=>{out.progress[pid][lang]=normalizeProgress(out.progress[pid][lang]||{});});});
+-    ['events','sessions','attempts','vocab
