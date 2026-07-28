@@ -1,0 +1,90 @@
+','errorBook','notes','shopping','diagnostics','missions'].forEach(k=>{if(!Array.isArray(out[k]))out[k]=[];});
++    ['events','sessions','attempts','vocab','errorBook','notes','shopping','diagnostics','missions','recordings','parentObservations'].forEach(k=>{if(!Array.isArray(out[k]))out[k]=[];});
+     if(out.activePlan&&typeof out.activePlan!=='object')out.activePlan=null;
+     return out;
+   }
+@@ -58,8 +58,10 @@
+   function addEvent(type,payload={}){const event={id:payload.id||uid(type),type,profile:payload.profile||state.active.profile,language:payload.language||state.active.language,deviceId:getDeviceId(),createdAt:payload.createdAt||now(),updatedAt:now(),...payload};state.events=core()?.mergeEvents?core().mergeEvents(state.events,[event]):[...state.events,event];state.sync.pending=(state.sync.pending||0)+1;save(type);return event;}
+   function savePlan(plan){const next=plan?JSON.parse(JSON.stringify(plan)):null;if(state.activePlan?.id===next?.id&&state.activePlan?.engineVersion===next?.engineVersion)return state.activePlan;state.activePlan=next;save('save-plan');return state.activePlan;}
+   function clearPlan(){state.activePlan=null;save('clear-plan');}
+-  function exportJSON(){return JSON.stringify({app:'Family Language OS',version,schema,exportedAt:now(),state},null,2);}
+-  function importJSON(text){const parsed=JSON.parse(text),incoming=parsed.state||parsed;state=normalize(incoming);save('restore');return state;}
++  function exportJSON(){const clean=JSON.parse(JSON.stringify(state));clean.recordings=(clean.recordings||[]).map(({blob,url,...meta})=>meta);return JSON.stringify({app:'Family Language OS',version,schema,exportedAt:now(),privacy:{audioBlobsIncluded:false},state:clean},null,2);}
++  function validateImport(incoming){if(!incoming||typeof incoming!=='object')throw new Error('invalid-backup-object');if(incoming.app&&incoming.app!=='Family Language OS')throw new Error('invalid-backup-app');const candidate=incoming.state||incoming;if(!candidate.progress||typeof candidate.progress!=='object')throw new Error('invalid-backup-progress');for(const pid of Object.keys(FLH_PROFILES)){if(!candidate.progress[pid])throw new Error(`missing-profile-${pid}`);}return candidate;}
++  function importJSON(text){if(typeof text!=='string'||text.length>15_000_000)throw new Error('backup-size-invalid');const parsed=JSON.parse(text),incoming=validateImport(parsed);state=normalize(incoming);save('restore');return state;}
++  function deleteProfileData(profile){if(!FLH_PROFILES[profile])throw new Error('invalid-profile');state.progress[profile]={en:baseProgress(),de:baseProgress()};for(const key of ['events','sessions','attempts','vocab','errorBook','notes','shopping','diagnostics','missions','recordings','parentObservations'])state[key]=state[key].filter(x=>x.profile!==profile);if(state.active.profile===profile){state.active={...defaultState().active};state.activePlan=null;}save('delete-profile-data');return state;}
+   function mergeRemoteSnapshot(remoteInput){
+     const remote=normalize(remoteInput?.state||remoteInput||{}),local=state,C=core();
+     if(!C)throw new Error('Learning Core not loaded');
+@@ -89,5 +91,5 @@
+   }
+   function reset(){state=normalize(defaultState());save('reset');}
+   function subscribe(fn){listeners.push(fn);return()=>{listeners=listeners.filter(x=>x!==fn);};}
+-  window.FLH_STORE={KEY,get,set,patch,update,save,addEvent,savePlan,clearPlan,exportJSON,importJSON,mergeRemoteSnapshot,reset,subscribe,uid,getDeviceId,normalize};
++  window.FLH_STORE={KEY,get,set,patch,update,save,addEvent,savePlan,clearPlan,exportJSON,importJSON,validateImport,deleteProfileData,mergeRemoteSnapshot,reset,subscribe,uid,getDeviceId,normalize};
+ })();
+diff --git a/js/sync.js b/js/sync.js
+new file mode 100644
+index 0000000..d906403
+--- /dev/null
++++ b/js/sync.js
+@@ -0,0 +1,14 @@
++(function(){
++  'use strict';
++  const auth=()=>window.FLH_AUTH,store=()=>window.FLH_STORE;
++  function ready(){return!!(auth()?.configured()&&auth()?.getSession()?.access_token);}
++  async function rest(path,{method='GET',body,prefer}={}){const s=auth().getSession();if(!s?.access_token)throw new Error('not-authenticated');const headers={...auth().headers(s.access_token)};if(prefer)headers.Prefer=prefer;const res=await fetch(`${FLH_CONFIG.supabaseUrl}/rest/v1/${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});const text=await res.text();let data=null;try{data=text?JSON.parse(text):null}catch(_e){data=text}if(!res.ok)throw new Error(data?.message||data?.hint||`sync-http-${res.status}`);return data;}
++  async function registerDevice(name=navigator.userAgent.slice(0,80)){const userId=auth().userId(),deviceId=store().getDeviceId();if(!userId)throw new Error('missing-user');await rest('device_registry?on_conflict=user_id,device_id',{method:'POST',prefer:'resolution=merge-duplicates,return=representation',body:{user_id:userId,device_id:deviceId,device_name:name,last_seen_at:new Date().toISOString()}});return deviceId;}
++  async function devices(){const userId=auth().userId();return rest(`device_registry?user_id=eq.${encodeURIComponent(userId)}&select=device_id,device_name,created_at,last_seen_at&order=created_at.asc`);}
++  async function removeDevice(deviceId){const userId=auth().userId();if(deviceId===store().getDeviceId())throw new Error('cannot-remove-current-device');return rest(`device_registry?user_id=eq.${encodeURIComponent(userId)}&device_id=eq.${encodeURIComponent(deviceId)}`,{method:'DELETE'});}
++  async function pushEvents(){const st=store().get(),userId=auth().userId(),acked=new Set(st.sync.ackedEventIds||[]),pending=st.events.filter(e=>!acked.has(e.id));if(!pending.length)return 0;const rows=pending.map(e=>({user_id:userId,event_id:e.id,profile_id:e.profile,language:e.language,event_type:e.type,occurred_at:e.createdAt||e.occurredAt||new Date().toISOString(),updated_at:e.updatedAt||e.createdAt||new Date().toISOString(),device_id:e.deviceId||store().getDeviceId(),payload:e}));await rest('learning_events?on_conflict=user_id,event_id',{method:'POST',prefer:'resolution=merge-duplicates',body:rows});store().update(s=>{s.sync.ackedEventIds=[...new Set([...(s.sync.ackedEventIds||[]),...pending.map(e=>e.id)])].slice(-10000);s.sync.pending=Math.max(0,s.events.length-s.sync.ackedEventIds.length);return s;},'sync-ack');return pending.length;}
++  async function pushSnapshots(){const st=store().get(),userId=auth().userId(),rows=[];for(const profile of Object.keys(FLH_PROFILES))for(const language of ['en','de'])rows.push({user_id:userId,profile_id:profile,language,schema_version:st.schema,app_version:st.version,payload:{progress:{[profile]:{[language]:st.progress[profile][language]}},events:[],attempts:[],vocab:st.vocab.filter(x=>x.profile===profile&&x.language===language),errorBook:st.errorBook.filter(x=>x.profile===profile&&x.language===language),missions:st.missions.filter(x=>x.profile===profile&&x.language===language)},updated_at:new Date().toISOString()});await rest('learning_snapshots?on_conflict=user_id,profile_id,language',{method:'POST',prefer:'resolution=merge-duplicates',body:rows});return rows.length;}
++  async function pull(){const st=store().get(),userId=auth().userId(),since=st.sync.lastSyncAt||'1970-01-01T00:00:00.000Z';const ev=await rest(`learning_events?user_id=eq.${encodeURIComponent(userId)}&updated_at=gt.${encodeURIComponent(since)}&select=payload&order=updated_at.asc`);const snaps=await rest(`learning_snapshots?user_id=eq.${encodeURIComponent(userId)}&select=payload,updated_at&order=updated_at.asc`);const remote={...st,events:(ev||[]).map(x=>x.payload)};for(const row of snaps||[]){const p=row.payload||{};for(const [pid,langs] of Object.entries(p.progress||{}))for(const [lang,progress] of Object.entries(langs||{})){remote.progress[pid]=remote.progress[pid]||{};remote.progress[pid][lang]=progress;}for(const key of ['vocab','errorBook','missions'])remote[key]=[...(remote[key]||[]),...(p[key]||[])];}store().mergeRemoteSnapshot(remote);return{events:ev?.length||0,snapshots:snaps?.length||0};}
++  async function syncNow(){if(!ready())throw new Error('sync-not-ready');store().update(s=>{s.sync.status='syncing';return s;},'sync-start');try{await registerDevice();const pushed=await pushEvents();await pushSnapshots();const pulled=await pull();store().update(s=>{s.sync.status='synced';s.sync.lastSyncAt=new Date().toISOString();s.sync.pending=0;return s;},'sync-complete');return{pushed,...pulled};}catch(e){store().update(s=>{s.sync.status='error';s.sync.lastError=String(e.message||e);return s;},'sync-error');throw e;}}
++  window.FLH_SYNC={ready,registerDevice,devices,removeDevice,pushEvents,pushSnapshots,pull,syncNow};
++})();
+diff --git a/manifest.webmanifest b/manifest.webmanifest
+index 10d0237..7dba0f9 100644
+--- a/manifest.webmanifest
++++ b/manifest.webmanifest
+@@ -1,13 +1,59 @@
+ {
++  "id": "./",
+   "name": "Family Language OS — خانه زبان خانواده",
+   "short_name": "Family Language OS",
+-  "description": "سامانه خانوادگی یادگیری انگلیسی و آلمانی با مسیر سن‌محور و موتور تطبیقی",
+-  "start_url": "./",
++  "description": "سامانه خانوادگی یادگیری انگلیسی و آلمانی با مسیر سن‌محور، محتوای تألیفی و موتور تطبیقی",
++  "start_url": "./?source=pwa",
+   "scope": "./",
+   "display": "standalone",
++  "orientation": "any",
+   "background_color": "#f3f6fa",
+   "theme_color": "#0c2538",
+   "lang": "fa",
+   "dir": "rtl",
+-  "icons": [{"src":"assets/app-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
++  "categories": [
++    "education",
++    "kids",
++    "productivity"
++  ],
++  "icons": [
++    {
++      "src": "./assets/icons/icon-192.svg",
++      "sizes": "192x192",
++      "type": "image/svg+xml",
++      "purpose": "any maskable"
++    },
++    {
++      "src": "./assets/icons/icon-512.svg",
++      "sizes": "512x512",
++      "type": "image/svg+xml",
++      "purpose": "any maskable"
++    }
++  ],
++  "shortcuts": [
++    {
++      "name": "برنامه امروز",
++      "short_name": "امروز",
++      "url": "./?view=today",
