@@ -1,0 +1,187 @@
+.
++3. Authentication با Email/Password را فعال کنید.
++4. در `config.js` فقط `supabaseUrl` و `supabaseAnonKey` را قرار دهید.
++5. Service Role Key را هرگز وارد مخزن یا Frontend نکنید.
++6. یک حساب خانوادگی روی دستگاه اول ایجاد و همان حساب را روی دستگاه دوم وارد کنید.
++7. ثبت دستگاه سوم باید با پیام Database Trigger رد شود.
++
++## گیت‌های خارجی
++بدون URL و Publishable Key واقعی، Live Sync قابل تأیید نیست. بدون Android، iPhone و Windows واقعی نیز PWA Acceptance نهایی قابل اعلام نیست.
+diff --git a/docs/PARENT_GUIDE_FA.md b/docs/PARENT_GUIDE_FA.md
+new file mode 100644
+index 0000000..95cd25c
+--- /dev/null
++++ b/docs/PARENT_GUIDE_FA.md
+@@ -0,0 +1,17 @@
++# راهنمای والد
++
++## النا، ۱۱ ساله
++جلسه پیشنهادی ۱۵ تا ۳۰ دقیقه است. مسیر شامل الفبا، فونیک، شنیدار تصویری، داستان، علوم، ارائه و پروژه کوتاه است. نتیجه هر هفته باید یک خروجی خصوصی مانند داستان کوتاه، فایل صوتی محلی یا پروژه مدرسه‌ای باشد. اشتباه با بازخورد اصلاحی نمایش داده می‌شود و هیچ مقایسه‌ای با بزرگسالان انجام نمی‌گیرد.
++
++## آریا، ۳ ساله
++جلسه باید ۵ تا ۸ دقیقه باشد و با حضور والد اجرا شود:
++1. سلام و توجه مشترک؛
++2. دو یا سه تصویر یا شیء واقعی؛
++3. یک حرکت یا صدای حیوان؛
++4. انتخاب یا اشاره داوطلبانه؛
++5. پایان مثبت.
++
++برای آریا تکرار اجباری، نوشتن، گرامر رسمی و آزمون ممنوع است. مشاهده والد به‌جای نمره ثبت می‌شود.
++
++## ایمنی دیجیتال
++فایل صوتی یا تصویری کودک را عمومی نکنید. در صورت استفاده از Cloud Sync فقط حساب خانوادگی کنترل‌شده را به کار ببرید و دستگاه گم‌شده را از صفحه Sync حذف کنید.
+diff --git a/docs/PRIVACY_FA.md b/docs/PRIVACY_FA.md
+new file mode 100644
+index 0000000..54b6ac7
+--- /dev/null
++++ b/docs/PRIVACY_FA.md
+@@ -0,0 +1,27 @@
++# اعلامیه حریم خصوصی Family Language OS
++
++## اصل محلی‌بودن داده
++پیشرفت، تلاش‌ها، خطانامه، واژگان و تنظیمات ابتدا روی همان دستگاه ذخیره می‌شوند. فعال‌سازی Cloud Sync اختیاری است و فقط پس از تنظیم Supabase و ورود آگاهانه انجام می‌شود.
++
++## داده کودکان
++- داده‌های النا و آریا **Private by Default** هستند.
++- هیچ رتبه‌بندی عمومی یا مقایسه رقابتی با بزرگسالان وجود ندارد.
++- صدای کودک به‌صورت خودکار در فضای ابری بارگذاری نمی‌شود.
++- آریا ضبط صدا و آزمون رسمی ندارد.
++- ضبط محلی النا فقط با رضایت والد انجام می‌شود.
++
++## ضبط صدا
++فایل‌های صوتی با `IndexedDB` در همان دستگاه نگهداری می‌شوند. نسخه JSON پشتیبان فقط متادیتا را ثبت می‌کند و Blob صوتی را صادر نمی‌کند. Cloud Audio در نسخه 7 غیرفعال و غیرقابل فعال‌سازی است.
++
++## همگام‌سازی
++همگام‌سازی با حساب خانوادگی و حداکثر دو دستگاه انجام می‌شود. Row Level Security دسترسی هر حساب را به داده خودش محدود می‌کند. دستگاه سوم در Database Trigger رد می‌شود.
++
++## حقوق کاربر
++کاربر می‌تواند:
++- داده عضو فعال را حذف کند؛
++- همه داده‌های محلی را بازنشانی کند؛
++- پشتیبان JSON بگیرد؛
++- رضایت ضبط محلی را لغو کند؛
++- دستگاه دیگر را از فهرست Cloud حذف کند.
++
++هیچ تبلیغ، Tracker یا Analytics شخص ثالث در برنامه فعال نشده است.
+diff --git a/docs/USER_GUIDE_FA.md b/docs/USER_GUIDE_FA.md
+new file mode 100644
+index 0000000..bc77c03
+--- /dev/null
++++ b/docs/USER_GUIDE_FA.md
+@@ -0,0 +1,14 @@
++# راهنمای کاربر Family Language OS
++
++1. عضو خانواده را انتخاب کنید.
++2. انگلیسی یا آلمانی، سطح، هدف و مدت نشست را تعیین کنید.
++3. از صفحه «امروز» برنامه تطبیقی را شروع کنید.
++4. پاسخ واقعی ثبت کنید؛ بازکردن کارت به‌تنهایی پیشرفت محسوب نمی‌شود.
++5. واژه‌های موعددار را در «مرور هوشمند» مرور کنید.
++6. خطاها را در «خطانامه» دوباره حل کنید.
++7. گزارش‌ها را برای برنامه‌ریزی ببینید، نه مقایسه اعضا.
++8. از بخش «من» پشتیبان JSON بگیرید و ظاهر یا دسترس‌پذیری را تنظیم کنید.
++9. برای Sync ابتدا `config.js` و Supabase را تکمیل کنید، سپس با یک حساب خانوادگی روی دو دستگاه وارد شوید.
++
++## نصب PWA
++پس از انتشار روی HTTPS، در Android/Chrome گزینه Install App و در iPhone گزینه Add to Home Screen را انتخاب کنید.
+diff --git a/index.html b/index.html
+index 5ef0307..05aeda9 100644
+--- a/index.html
++++ b/index.html
+@@ -4,11 +4,14 @@
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+   <meta name="theme-color" content="#0c2538">
++  <meta name="color-scheme" content="light dark">
++  <meta name="robots" content="noindex,nofollow">
+   <meta name="description" content="سیستم‌عامل یادگیری خانوادگی انگلیسی و آلمانی از صفر تا C2">
+   <title>Family Language OS — خانه زبان خانواده</title>
+   <link rel="manifest" href="manifest.webmanifest">
+   <link rel="icon" href="assets/app-icon.svg" type="image/svg+xml">
+   <link rel="stylesheet" href="styles.css">
++  <link rel="stylesheet" href="css/v7.css">
+ </head>
+ <body data-profile="saeed" data-language="en">
+   <div id="boot" class="boot">
+@@ -19,7 +22,7 @@
+     <aside class="sidebar">
+       <div class="brand">
+         <div class="brand-mark">F</div>
+-        <div><strong>خانه زبان خانواده</strong><small>Learning OS · v6.1 Core</small></div>
++        <div><strong>خانه زبان خانواده</strong><small>Learning OS · v7 RC1</small></div>
+       </div>
+       <div id="familyRail" class="family-rail"></div>
+       <nav id="mainNav" class="main-nav">
+@@ -27,7 +30,10 @@
+         <button data-view="path"><span>🗺️</span>مسیر</button>
+         <button data-view="practice"><span>🎯</span>تمرین</button>
+         <button data-view="library"><span>📚</span>کتابخانه</button>
++        <button data-view="reports"><span>📊</span>گزارش‌ها</button>
+         <button data-view="family"><span>👨‍👩‍👧‍👦</span>خانواده</button>
++        <button data-view="parent"><span>🛡️</span>والد</button>
++        <button data-view="sync"><span>☁️</span>همگام‌سازی</button>
+         <button data-view="me"><span>⚙️</span>من</button>
+       </nav>
+       <div class="sidebar-foot">
+@@ -67,6 +73,9 @@
+ 
+   <dialog id="taskDialog" class="task-dialog"><div id="taskDialogBody"></div></dialog>
+   <dialog id="focusDialog" class="focus-dialog"><div id="focusDialogBody"></div></dialog>
++  <dialog id="authDialog" class="task-dialog"><div id="authDialogBody"></div></dialog>
++  <dialog id="privacyDialog" class="task-dialog"><div id="privacyDialogBody"></div></dialog>
++  <div id="updateBanner" class="update-banner hidden" role="status"><span>نسخه جدید آماده است.</span><button id="applyUpdateBtn" class="primary-btn">به‌روزرسانی</button></div>
+   <input id="restoreInput" type="file" accept="application/json" hidden>
+ 
+   <script src="config.js"></script>
+@@ -74,8 +83,17 @@
+   <script src="js/profiles.js"></script>
+   <script src="js/visuals.js"></script>
+   <script src="js/curriculum.js"></script>
++  <script src="content/packs/family-foundation-v1.js"></script>
++  <script src="js/content-registry.js"></script>
++  <script src="js/content-adapter.js"></script>
+   <script src="js/core.js"></script>
+   <script src="js/storage.js"></script>
++  <script src="js/privacy.js"></script>
++  <script src="js/recorder.js"></script>
++  <script src="js/auth.js"></script>
++  <script src="js/sync.js"></script>
++  <script src="js/accessibility.js"></script>
++  <script src="js/release.js"></script>
+   <script src="js/engine.js"></script>
+   <script src="js/app.js"></script>
+ </body>
+diff --git a/js/accessibility.js b/js/accessibility.js
+new file mode 100644
+index 0000000..bd95d57
+--- /dev/null
++++ b/js/accessibility.js
+@@ -0,0 +1,6 @@
++(function(){
++  'use strict';
++  function apply(settings={}){document.documentElement.dataset.theme=settings.appearance||'system';document.documentElement.classList.toggle('high-contrast',!!settings.highContrast);document.documentElement.style.setProperty('--font-scale',String(settings.fontScale||1));}
++  function announce(text){let el=document.getElementById('flhLive');if(!el){el=document.createElement('div');el.id='flhLive';el.className='sr-only';el.setAttribute('aria-live','polite');document.body.appendChild(el);}el.textContent='';requestAnimationFrame(()=>el.textContent=text);}
++  window.FLH_A11Y={apply,announce};
++})();
+diff --git a/js/auth.js b/js/auth.js
+new file mode 100644
+index 0000000..74c93f9
+--- /dev/null
++++ b/js/auth.js
+@@ -0,0 +1,16 @@
++(function(){
++  'use strict';
++  const KEY='flh_supabase_session_v1';
++  const cfg=()=>window.FLH_CONFIG||{};
++  let session=null;try{session=JSON.parse(localStorage.getItem(KEY)||'null')}catch(_e){}
++  function configured(){return!!(cfg().supabaseUrl&&cfg().supabaseAnonKey);}
++  function headers(token){return{'Content-Type':'application/json','apikey':cfg().supabaseAnonKey,...(token?{'Authorization':`Bearer ${token}`}:{})};}
++  async function request(path,options={}){if(!configured())throw new Error('supabase-not-configured');const res=await fetch(`${cfg().supabaseUrl}${path}`,{...options,headers:{...headers(options.token),...(options.headers||{})}});const body=await res.text();let data=null;try{data=body?JSON.parse(body):null}catch(_e){data=body}if(!res.ok)throw new Error(data?.msg||data?.message||data?.error_description||`HTTP ${res.status}`);return data;}
++  function save(s){session=s||null;if(session)localStorage.setItem(KEY,JSON.stringify(session));else localStorage.removeItem(KEY);window.dispatchEvent(new CustomEvent('flh-auth-changed',{detail:session}));return session;}
++  async function signUp(email,password){const data=await request('/auth/v1/signup',{method:'POST',body:JSON.stringify({email,password})});return save(data.session||data);}
++  async function signIn(email,password){const data=await request('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})});return save(data);}
++  async function refresh(){if(!session?.refresh_token)return null;const data=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:session.refresh_token})});return save(data);}
++  async function signOut(){try{if(session?.access_token)await request('/auth/v1/logout',{method:'POST',token:session.access_token});}finally{save(null);}}
++  function userId(){const token=session?.access_token;if(!token)return null;try{return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub||null}catch(_e){return session?.user?.id||null}}
++  window.FLH_AUTH={configured,getSession:()=>session,userId,signUp,signIn,refresh,signOut,headers,request};
++})();
+diff --git a/js/conten
