@@ -1,0 +1,171 @@
+   "icons": [
++        {
++          "src": "./assets/icons/icon-192.svg",
++          "sizes": "192x192",
++          "type": "image/svg+xml"
++        }
++      ]
++    },
++    {
++      "name": "تمرین",
++      "short_name": "تمرین",
++      "url": "./?view=practice",
++      "icons": [
++        {
++          "src": "./assets/icons/icon-192.svg",
++          "sizes": "192x192",
++          "type": "image/svg+xml"
++        }
++      ]
++    }
++  ]
+ }
+diff --git a/privacy.html b/privacy.html
+new file mode 100644
+index 0000000..fe78645
+--- /dev/null
++++ b/privacy.html
+@@ -0,0 +1 @@
++<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>حریم خصوصی Family Language OS</title><style>body{max-width:850px;margin:auto;padding:32px;font-family:Tahoma,Arial;line-height:2;color:#172033;background:#f8fafc}main{background:white;padding:28px;border-radius:22px;box-shadow:0 12px 35px #0001}h1,h2{color:#0e7490}</style></head><body><main><h1>اعلامیه حریم خصوصی</h1><p>Family Language OS داده را ابتدا روی دستگاه ذخیره می‌کند. داده و صدای کودکان خصوصی است و صدای کودک به‌صورت خودکار به Cloud ارسال نمی‌شود.</p><h2>ضبط محلی</h2><p>ضبط فقط با رضایت صریح والد یا کاربر بزرگسال انجام و در IndexedDB همان دستگاه ذخیره می‌شود. آریا امکان ضبط و آزمون رسمی ندارد.</p><h2>همگام‌سازی</h2><p>Cloud Sync اختیاری است و پس از ورود حساب خانوادگی فعال می‌شود. حداکثر دو دستگاه مجاز است و Row Level Security داده حساب‌ها را جدا می‌کند.</p><h2>کنترل داده</h2><p>کاربر می‌تواند پشتیبان بگیرد، داده عضو فعال را حذف کند، رضایت را لغو یا کل داده محلی را بازنشانی کند.</p></main></body></html>
+diff --git a/supabase/migrations/030_final_production.sql b/supabase/migrations/030_final_production.sql
+new file mode 100644
+index 0000000..fc16718
+--- /dev/null
++++ b/supabase/migrations/030_final_production.sql
+@@ -0,0 +1,30 @@
++-- Family Language OS v7 RC1 / Schema 30
++-- Apply after the base schema.
++create table if not exists public.sync_conflicts(
++  user_id uuid not null references auth.users(id) on delete cascade,
++  conflict_id text not null,
++  profile_id text not null,
++  language text not null check(language in ('en','de')),
++  entity_type text not null,
++  entity_id text not null,
++  local_payload jsonb not null,
++  remote_payload jsonb not null,
++  resolution text,
++  created_at timestamptz not null default now(),
++  resolved_at timestamptz,
++  primary key(user_id,conflict_id)
++);
++create table if not exists public.privacy_consents(
++  user_id uuid primary key references auth.users(id) on delete cascade,
++  policy_version text not null,
++  local_recording_consent boolean not null default false,
++  cloud_audio_consent boolean not null default false check(cloud_audio_consent=false),
++  accepted_at timestamptz,
++  updated_at timestamptz not null default now()
++);
++alter table public.sync_conflicts enable row level security;
++alter table public.privacy_consents enable row level security;
++drop policy if exists "own conflicts" on public.sync_conflicts;
++create policy "own conflicts" on public.sync_conflicts for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
++drop policy if exists "own privacy consent" on public.privacy_consents;
++create policy "own privacy consent" on public.privacy_consents for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+diff --git a/supabase/policies/README.md b/supabase/policies/README.md
+new file mode 100644
+index 0000000..e078828
+--- /dev/null
++++ b/supabase/policies/README.md
+@@ -0,0 +1,2 @@
++# RLS policies
++All user-owned rows require `auth.uid() = user_id`. No service-role credential is used by the browser. Audio blobs are not part of the cloud schema.
+diff --git a/supabase/schema.sql b/supabase/schema.sql
+index ba07e7e..54fee19 100644
+--- a/supabase/schema.sql
++++ b/supabase/schema.sql
+@@ -71,3 +71,41 @@ end;$$;
+ drop trigger if exists enforce_two_devices on public.device_registry;
+ create trigger enforce_two_devices before insert on public.device_registry
+ for each row execute function public.limit_two_devices();
++
++create table if not exists public.sync_conflicts(
++  user_id uuid not null references auth.users(id) on delete cascade,
++  conflict_id text not null,
++  profile_id text not null,
++  language text not null check(language in ('en','de')),
++  entity_type text not null,
++  entity_id text not null,
++  local_payload jsonb not null,
++  remote_payload jsonb not null,
++  resolution text,
++  created_at timestamptz not null default now(),
++  resolved_at timestamptz,
++  primary key(user_id,conflict_id)
++);
++
++create table if not exists public.privacy_consents(
++  user_id uuid primary key references auth.users(id) on delete cascade,
++  policy_version text not null,
++  local_recording_consent boolean not null default false,
++  cloud_audio_consent boolean not null default false check(cloud_audio_consent=false),
++  accepted_at timestamptz,
++  updated_at timestamptz not null default now()
++);
++
++alter table public.sync_conflicts enable row level security;
++alter table public.privacy_consents enable row level security;
++drop policy if exists "own conflicts" on public.sync_conflicts;
++create policy "own conflicts" on public.sync_conflicts for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
++drop policy if exists "own privacy consent" on public.privacy_consents;
++create policy "own privacy consent" on public.privacy_consents for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
++
++create or replace function public.touch_device_last_seen() returns trigger
++language plpgsql security definer set search_path=public as $$
++begin new.last_seen_at=now(); return new; end;$$;
++drop trigger if exists touch_device_last_seen_trigger on public.device_registry;
++create trigger touch_device_last_seen_trigger before update on public.device_registry
++for each row execute function public.touch_device_last_seen();
+diff --git a/supabase/seed/README.md b/supabase/seed/README.md
+new file mode 100644
+index 0000000..f6284c8
+--- /dev/null
++++ b/supabase/seed/README.md
+@@ -0,0 +1,2 @@
++# Seed policy
++Curriculum content is shipped as versioned static content packs. Personal family data is never committed as seed data.
+diff --git a/sw.js b/sw.js
+index 7241d08..f341319 100644
+--- a/sw.js
++++ b/sw.js
+@@ -1,8 +1,16 @@
+-const CACHE='family-language-os-v6-1-core-1';
+-const ASSETS=['./','./index.html','./styles.css','./config.js','./manifest.webmanifest','./assets/app-icon.svg','./assets/profiles/saeed.webp','./assets/profiles/arezoo.webp','./assets/profiles/elena.webp','./assets/profiles/aria.webp','./js/profile-images.js','./js/profiles.js','./js/visuals.js','./js/curriculum.js','./js/core.js','./js/storage.js','./js/engine.js','./js/app.js'];
+-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
+-self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+-self.addEventListener('fetch',event=>{
+-  if(event.request.method!=='GET')return;
+-  event.respondWith(caches.match(event.request).then(cached=>cached||fetch(event.request).then(response=>{const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(event.request,copy));return response;}).catch(()=>event.request.mode==='navigate'?caches.match('./index.html'):undefined)));
+-});
++const VERSION='family-language-os-v7-rc1-1';
++const APP_SHELL=[
++  './','./index.html','./styles.css','./css/v7.css','./config.js','./manifest.webmanifest',
++  './assets/app-icon.svg','./assets/icons/icon-192.svg','./assets/icons/icon-512.svg',
++  './assets/profiles/saeed.webp','./assets/profiles/arezoo.webp','./assets/profiles/elena.webp','./assets/profiles/aria.webp',
++  './js/profile-images.js','./js/profiles.js','./js/visuals.js','./js/curriculum.js',
++  './content/packs/family-foundation-v1.js','./js/content-registry.js','./js/content-adapter.js',
++  './js/core.js','./js/storage.js','./js/privacy.js','./js/recorder.js','./js/auth.js','./js/sync.js',
++  './js/accessibility.js','./js/release.js','./js/engine.js','./js/app.js'
++];
++self.addEventListener('install',event=>event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(APP_SHELL))));
++self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
++self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting();});
++async function navigation(request){try{const response=await fetch(request);const cache=await caches.open(VERSION);cache.put('./index.html',response.clone());return response;}catch(_e){return(await caches.match(request))||(await caches.match('./index.html'));}}
++async function asset(request){const cached=await caches.match(request);const refresh=fetch(request).then(async response=>{if(response?.ok){const cache=await caches.open(VERSION);cache.put(request,response.clone());}return response;}).catch(()=>null);return cached||refresh||new Response('',{status:503});}
++self.addEventListener('fetch',event=>{if(event.request.method!=='GET')return;const url=new URL(event.request.url);if(url.origin!==location.origin)return;if(event.request.mode==='navigate')event.respondWith(navigation(event.request));else event.respondWith(asset(event.request));});
+diff --git a/tests/browser_v7_acceptance.py b/tests/browser_v7_acceptance.py
+new file mode 100644
+index 0000000..78f86c3
+--- /dev/null
++++ b/tests/browser_v7_acceptance.py
+@@ -0,0 +1,60 @@
++from playwright.sync_api import sync_playwright
++from pathlib import Path
++import subprocess, time, os, signal
++ROOT=Path(__file__).resolve().parents[1]
++server=subprocess.Popen(['python','-m','http.server','8765','--bind','127.0.0.1'],cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
++time.sleep(1)
++try:
++  with sync_playwright() as p:
++    browser=p.
