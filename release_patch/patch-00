@@ -1,0 +1,284 @@
+diff --git a/.github/workflows/pages.yml b/.github/workflows/pages.yml
+index b83554c..aeaf427 100644
+--- a/.github/workflows/pages.yml
++++ b/.github/workflows/pages.yml
+@@ -1,7 +1,9 @@
+-name: Deploy GitHub Pages
++name: Validate and Deploy GitHub Pages
+ on:
+   push:
+-    branches: [main, v6.1-learning-engine-core]
++    branches: [main, v7-final-production]
++  pull_request:
++    branches: [main]
+   workflow_dispatch:
+ permissions:
+   contents: read
+@@ -19,11 +21,22 @@ jobs:
+         with:
+           node-version: 22
+       - name: JavaScript syntax
+-        run: find js -name '*.js' -print0 | xargs -0 -n1 node --check
+-      - name: Learning core tests
++        run: find js content/packs tests -name '*.js' -print0 | xargs -0 -n1 node --check
++      - name: Learning engine tests
+         run: node tests/core.test.js
++      - name: Authored content tests
++        run: node tests/content.test.js
++      - name: Final-production static tests
++        run: |
++          node tests/v7.test.js
++          node tests/sync.mock.test.js
++          node tests/pwa-static.test.js
++      - name: Build standalone artifact
++        run: python tools/build_standalone.py
++      - name: Verify generated standalone
++        run: test -s dist/Family_Language_OS_v7_RC1_Standalone.html
+   deploy:
+-    if: github.ref == 'refs/heads/main'
++    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+     needs: validate
+     environment:
+       name: github-pages
+diff --git a/BUILD_REPORT.md b/BUILD_REPORT.md
+index 99a5691..e6c8857 100644
+--- a/BUILD_REPORT.md
++++ b/BUILD_REPORT.md
+@@ -1,39 +1,50 @@
+-# BUILD REPORT — Family Language OS v6.1 Learning Engine Core
++# BUILD REPORT — Family Language OS v7 RC1
+ 
+-## نتیجه
+-Learning Engine Core ساخته شد و از حالت کارت/پوسته به موتور ثبت عملکرد، تسلط، مرور و مسیر ارتقا تبدیل شد.
++## هویت ساخت
++- Branch: `v7-final-production`
++- Version: `7.0.0-rc1`
++- Schema: `30`
++- Base: `v6.2-content-authoring`
++- Main: unchanged
+ 
+ ## تغییرات اصلی
+-- Schema 24 و Version `6.1.0-learning-engine-core`.
+-- ماژول جدید `js/core.js`.
+-- برنامه روزانه deterministic و قابل Resume.
+-- Mastery با نمره، استقلال، بازیابی، تکمیل و پایداری.
+-- جلوگیری از XP تکراری برای همان Task.
+-- Unit Gate و Level Readiness.
+-- SRS واقعی برای کارت واژه.
+-- خطانامه خودکار از پاسخ نادرست.
+-- ارزیابی سطح داخلی و ثبت Assessment.
+-- ادغام Event/Snapshot برای دو دستگاه.
+-- اصلاح تغییر عضو روی موبایل از طریق Active Identity.
+-- تصاویر واقعی سعید، آرزو، النا و آریا.
++- اتصال ۴۸ درس تألیفی و ۱۹۲ تمرین به Adaptive Session Engine؛
++- Authored plan مستقل برای هر چهار عضو و هر دو زبان؛
++- Reports، Parent Center و Sync Center؛
++- ضبط صوت محلی با رضایت و بدون Cloud Audio؛
++- Supabase Auth/REST Sync و ادغام غیرمخرب؛
++- Backup validation و حذف داده عضو؛
++- Dark Mode، High Contrast و Font Scale؛
++- Manifest، آیکون‌های ۱۹۲/۵۱۲ و Service Worker نسخه‌دار؛
++- Migration Schema 30 و سیاست‌های حریم خصوصی.
+ 
+-## آزمون‌ها
+-- JavaScript syntax: PASS.
+-- Core unit tests: 13/13 PASS.
+-- Embedded Chromium runtime: PASS.
+-- Desktop routes/profile/diagnostic/alphabet/task completion: PASS.
+-- Mobile profile switch and visual practice: PASS.
+-- Four real profile images load: PASS.
+-- 184 curriculum units: PASS.
++## آمار واقعی
++- Curriculum units: 184
++- Authored lessons: 48
++- Interactive tasks: 192
++- Profiles: 4
++- Languages: 2
+ 
+-## محدودیت محیط آزمون
+-Chromium در محیط کانتینر دسترسی مستقیم به `localhost` و `file://` را با `ERR_BLOCKED_BY_ADMINISTRATOR` مسدود کرد. Browser Runtime با نسخه Standalone و `page.set_content` اجرا و PASS شد. آزمون GitHub Pages واقعی هنوز لازم است.
++## آزمون‌های اجراشده
++- JavaScript syntax: PASS
++- Core: 13/13 PASS
++- Content: 12/12 PASS
++- v7 static/integration: 10/10 PASS
++- Mock sync: 5/5 PASS
++- PWA static: 5/5 PASS
++- Embedded Chromium routes/profile/content/privacy/mobile: PASS
+ 
+-## باقی‌مانده برای Final Release
+-- تألیف و ممیزی محتوای کامل A0 تا C2.
+-- ضبط صدای واقعی/میکروفن و بازپخش.
+-- Supabase Auth و Sync زنده.
+-- Conflict Test واقعی روی دو دستگاه.
+-- GitHub Pages green deployment.
+-- پذیرش روی Android، iPhone و Windows.
+-- پذیرش محتوایی خانواده.
++## منابع طراحی آموزشی
++- Council of Europe CEFR descriptors and Companion Volume
++- Goethe-Institut A1–C2 competence/exam orientation
++- IELTS Academic official four-skill format
++- Cambridge English young learner principles
++- MDN PWA installability guidance
++
++## محدودیت‌های واقعی
++- Live Supabase credentials موجود نیست.
++- دو دستگاه واقعی و دستگاه سوم واقعی آزمایش نشده‌اند.
++- Service Worker/Offline روی HTTPS واقعی باید پس از Preview Deployment آزمایش شود.
++- Family Acceptance هنوز ثبت نشده است.
++
++حکم: **RELEASE CANDIDATE — BLOCKED BY EXTERNAL CREDENTIAL AND REAL-DEVICE TEST**
+diff --git a/BUILD_REPORT_V6_2.md b/BUILD_REPORT_V6_2.md
+deleted file mode 100644
+index 915f1ee..0000000
+--- a/BUILD_REPORT_V6_2.md
++++ /dev/null
+@@ -1,41 +0,0 @@
+-# BUILD REPORT — Family Language OS v6.2 Content Authoring Alpha 1
+-
+-## Scope
+-- Branch: `v6.2-content-authoring`
+-- Parent: `v6.1-learning-engine-core`
+-- Main branch unchanged
+-- Schema: 25
+-
+-## Full local authored pool
+-- Lessons: 48
+-- Interactive tasks: 192
+-- Vocabulary entries: 318
+-- Model phrases: 192
+-- Profiles: {'saeed': 8, 'arezoo': 16, 'elena': 16, 'aria': 8}
+-- Languages: {'en': 26, 'de': 22}
+-- Levels: {'B1': 2, 'B2': 2, 'C1': 2, 'A0': 7, 'A1': 27, 'PRE': 8}
+-
+-## GitHub reviewed tranche
+-- 8 fully reviewed lessons
+-- 32 interactive tasks
+-- four profiles
+-- English and German
+-- CI content-quality workflow
+-- CEFR/age-banded blueprint
+-- content registry and validator
+-- review laboratory
+-
+-## Validation
+-- JavaScript syntax: PASS
+-- Content schema: PASS
+-- Content tests: 12/12 PASS
+-- Unique lesson IDs: PASS
+-- Unique task IDs: PASS
+-- Arzoo A1 baseline: PASS
+-- Elena safeguarding and visual tasks: PASS
+-- Arya PRE / participation-only / no formal assessment: PASS
+-- Saeed research facts and P90 wording: PASS
+-
+-## Honest status
+-Alpha 1 is a controlled authored-content foundation, not the complete A0–C2 corpus.
+-The 48-lesson local pool must be promoted in reviewed tranches before merge to main.
+diff --git a/README_FA.md b/README_FA.md
+index 9a6c8b1..a343b93 100644
+--- a/README_FA.md
++++ b/README_FA.md
+@@ -1,36 +1,22 @@
+-# Family Language OS v6.1 — Learning Engine Core
++# Family Language OS
+ 
+-سامانه خانوادگی آموزش انگلیسی و آلمانی برای سعید، آرزو، النا و آریا.
++سامانه خانوادگی آموزش انگلیسی و آلمانی برای سعید، آرزو، النا و آریا؛ دارای برنامه تطبیقی، تسلط، مرور فاصله‌دار، خطانامه، محتوای سن‌محور، PWA و معماری Sync دو دستگاه.
+ 
+-## اجرای محلی
+-فایل `index.html` را از یک وب‌سرور استاتیک یا GitHub Pages اجرا کنید. نسخه Standalone نیز همراه Release ساخته می‌شود.
++## وضعیت
++`7.0.0-rc1` — `Schema 30` — Release Candidate
+ 
+-## قابلیت‌های این مرحله
+-- ۱۸۴ واحد A0 تا C2 و PRE
+-- نشست تطبیقی پایدار و قابل ادامه
+-- Mastery، پایداری، مهارت و قفل واحد
+-- مرور فاصله‌دار واژگان
+-- خطانامه خودکار
+-- ارزیابی سطح داخلی
+-- تصاویر واقعی چهار عضو خانواده
+-- PWA و Offline Cache
+-- Event Merge و آمادگی همگام‌سازی دو دستگاه
++## اجرای محلی
++فایل `index.html` را با یک Static Server اجرا کنید. نسخه تک‌فایلی در `dist/Family_Language_OS_v7_RC1_Standalone.html` قرار دارد.
+ 
+-## آزمون‌ها
++## آزمون
+ ```bash
+-find js -name '*.js' -print0 | xargs -0 -n1 node --check
+ node tests/core.test.js
+-python tests/browser_embedded_smoke.py
+-python tests/mobile_smoke.py
++node tests/content.test.js
++node tests/v7.test.js
++node tests/sync.mock.test.js
++node tests/pwa-static.test.js
++python tests/browser_v7_embedded_acceptance.py
+ ```
+ 
+-## Supabase
+-1. پروژه Supabase بسازید.
+-2. `supabase/schema.sql` را اجرا کنید.
+-3. فقط URL و Anon/Publishable Key را در `config.js` بگذارید.
+-4. Service Role Key هرگز نباید در مخزن عمومی قرار گیرد.
+-
+-## شاخه توسعه
+-`v6.1-learning-engine-core`
+-
+-`main` تا عبور نسخه از گیت‌های پذیرش دست‌نخورده می‌ماند.
++## انتشار
++GitHub Pages فقط پس از Merge کنترل‌شده به `main` منتشر می‌شود. راهنمای کامل در `docs/DEPLOYMENT_FA.md` است.
+diff --git a/RELEASE_NOTES.md b/RELEASE_NOTES.md
+index c5e0aee..f70bb41 100644
+--- a/RELEASE_NOTES.md
++++ b/RELEASE_NOTES.md
+@@ -1,16 +1,15 @@
+-# v6.1.0 Learning Engine Core Candidate
++# Family Language OS v7.0.0 RC1
+ 
+-## Built
+-- Adaptive deterministic daily plan
+-- Persistent session resume
+-- Mastery and stability model
+-- Sequential unit gates and level readiness
+-- SRS vocabulary reviews
+-- Automatic error book
+-- Internal four-skill assessment
+-- Local-first attempts/events and snapshot merge
+-- Mobile profile switching
+-- Four real family profile images
++## Added
++- authored bilingual daily plans for all four family members;
++- evidence-based mastery, SRS, error book and level gates;
++- reports, parent privacy center and local-only recordings;
++- optional Supabase authentication and two-device event sync;
++- PWA install/update infrastructure and accessibility controls;
++- 48 authored lessons and 192 interactive tasks.
+ 
+-## Not Final
+-Full authored A0–C2 content, microphone recording, Supabase live authentication/sync and real-device family acceptance remain for later gates.
++## Privacy
++Child data is private by default. Cloud audio upload is disabled. Arya remains PRE and parent-guided without formal assessment.
++
++## Release status
++This is a Release Candidate. Live cloud, real-device PWA and family acceptance gates remain open.
+diff --git a/RELEASE_NOTES_V7.md b/RELEASE_NOTES_V7.md
+new file mode 100644
+index 0000000..f70bb41
+--- /dev/null
++++ b/RELEASE_NOTES_V7.md
+@@ -0,0 +1,15 @@
++# Family Language OS v7.0.0 RC1
++
++## Added
++- authored bilingual daily plans for all four family members;
++- evidence-based mastery, SRS, error book and level gates;
++- reports, parent privacy center and local-only recordings;
++- optional Supabase authentication and two-device event sync;
++- PWA install/update infrastructure and accessibility controls;
++- 48 authored lessons and 192 interactive tasks.
++
++## Privacy
++Child data is private by default. Cloud audio upload is disabled. Arya remains PRE and parent-guided with
