@@ -3,6 +3,9 @@ on:
   push:
     branches: [v7-payload-staging]
     paths: [release_payload/READY]
+  pull_request:
+    branches: [main]
+    paths: [release_payload/READY]
 permissions:
   contents: write
 concurrency:
@@ -10,6 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   apply:
+    if: github.head_ref == 'v7-payload-staging' || github.ref == 'refs/heads/v7-payload-staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,12 +22,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Reconstruct and extract audited payload
+      - name: Reconstruct audited sources
         run: |
-          cat release_payload/part-* | base64 -d > /tmp/v7-final.tar.xz
-          tar -xJf /tmp/v7-final.tar.xz -C .
-          rm -rf release_payload
-          rm -f .github/workflows/apply-v7-payload.yml
+          cat release_patch/patch-* > /tmp/v7.patch
+          cat release_patch/app-* > /tmp/app.js
+          cat content_payload/part-* | base64 -d > /tmp/v7-content.tar.xz
+          echo "a53bd6b7f091a4a5f09839410d478fef485da000ff3edb892521807a474d791c  /tmp/v7-content.tar.xz" | sha256sum -c -
+          echo "b53106509a47c15a2f5b399f6ba5e6270ca36b2ae08e1a0f0153cccf5a43846d  /tmp/v7.patch" | sha256sum -c -
+          echo "25e1a5e3be8b1824f71d058314053b14ef48123dd37a9ec5e6f7890bbdd60eeb  /tmp/app.js" | sha256sum -c -
+          tar -tJf /tmp/v7-content.tar.xz >/dev/null
+      - name: Switch to clean target branch
+        run: |
+          git fetch origin v7-final-production
+          git switch -C build-v7 origin/v7-final-production
+      - name: Apply authored content and source patch
+        run: |
+          tar -xJf /tmp/v7-content.tar.xz -C .
+          git apply --check /tmp/v7.patch
+          git apply /tmp/v7.patch
+          cp /tmp/app.js js/app.js
       - name: Validate JavaScript syntax
         run: find js content/packs tests -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Run learning-engine and content tests
