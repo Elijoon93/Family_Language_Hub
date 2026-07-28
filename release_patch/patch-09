@@ -1,0 +1,88 @@
+'saeed','arezoo','elena','aria']){const profile=FLH_PROFILES[pid],lang=profile.defaultLanguage,level=pid==='aria'?'PRE':profile.levels[lang];FLH_STORE.update(s=>{s.active={...s.active,profile:pid,language:lang,level,duration:profile.dailyMinutes,goal:profile.goals[lang][0]};s.activePlan=null;return s;});const plan=FLH_ENGINE.buildDailyPlan({force:true});assert(plan.authoredLesson,`no authored content for ${pid}`);assert(plan.steps.length>=4,`too few steps for ${pid}`);}});
++test('Arya authored plan stays gentle and PRE',()=>{const p=FLH_PROFILES.aria;FLH_STORE.update(s=>{s.active={...s.active,profile:'aria',language:'en',level:'PRE',duration:7,goal:p.goals.en[0]};s.activePlan=null;return s;});const plan=FLH_ENGINE.buildDailyPlan({force:true});assert(plan.level==='PRE');assert(plan.steps.length<=6);assert(plan.authoredLesson.safeguarding.parentRequired);assert(!plan.steps.some(x=>x.type==='writing'||x.type==='record-speech'));});
++test('record speech remains local-only in adapter',()=>{const lesson=FLH_CONTENT.registry.get('saeed-en-b1-research-identity'),ctx={profile:FLH_PROFILES.saeed,language:'en',level:'B1'},unit=FLH_CURRICULUM.units.find(x=>x.id==='en-b1-01'),t=lesson.tasks.find(x=>x.type==='record-speech');const a=FLH_CONTENT_ADAPTER.normaliseTask(t,lesson,ctx,unit,0,'2026-07-29');assert(a.type==='record-speech');assert(a.sourceTaskType==='record-speech');});
++test('backup excludes audio blobs and validates profile structure',()=>{FLH_STORE.reset();FLH_STORE.update(s=>{s.recordings.push({id:'r1',blob:{secret:true},url:'blob:test',profile:'saeed'});return s;});const text=FLH_STORE.exportJSON();assert(!text.includes('blob:test'));assert(!text.includes('secret'));const parsed=JSON.parse(text);assert(parsed.privacy.audioBlobsIncluded===false);FLH_STORE.validateImport(parsed);});
++test('invalid backup is rejected',()=>{let failed=false;try{FLH_STORE.importJSON('{"foo":1}')}catch(e){failed=true}assert(failed);});
++test('privacy never permits cloud audio',()=>{FLH_PRIVACY.accept({localRecordingConsent:true,cloudAudioConsent:true});assert(FLH_PRIVACY.canUploadAudio()===false);assert(FLH_PRIVACY.canRecord('aria')===false);assert(FLH_PRIVACY.canRecord('elena')===true);});
++test('manifest and service worker reference v7 assets',()=>{const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.webmanifest'),'utf8')),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');assert(manifest.icons.some(x=>x.sizes==='192x192'));assert(manifest.icons.some(x=>x.sizes==='512x512'));assert(sw.includes('family-language-os-v7-rc1'));assert(sw.includes('family-foundation-v1.js'));});
++test('schema enforces two devices and RLS',()=>{const sql=fs.readFileSync(path.join(root,'supabase/schema.sql'),'utf8');assert(sql.includes('limit_two_devices'));assert(sql.includes('enable row level security'));assert(sql.includes('cloud_audio_consent boolean not null default false check(cloud_audio_consent=false)'));});
++if(!process.exitCode)console.log(`\n${passed} v7 tests passed.`);
+diff --git a/tools/build_standalone.py b/tools/build_standalone.py
+index 84319ae..e3a3a54 100644
+--- a/tools/build_standalone.py
++++ b/tools/build_standalone.py
+@@ -1,18 +1,26 @@
+ from pathlib import Path
+-import re
++import re, base64
+ root=Path(__file__).resolve().parents[1]
+ html=(root/'index.html').read_text(encoding='utf-8')
+-css=(root/'styles.css').read_text(encoding='utf-8')
++css=(root/'styles.css').read_text(encoding='utf-8')+'\n'+(root/'css/v7.css').read_text(encoding='utf-8')
+ html=re.sub(r'\s*<link rel="manifest"[^>]*>', '', html)
+ html=re.sub(r'\s*<link rel="icon"[^>]*>', '', html)
+-html=re.sub(r'\s*<link rel="stylesheet" href="styles\.css">', '\n  <style>\n'+css+'\n  </style>', html)
+-order=['config.js','js/profile-images.js','js/profiles.js','js/visuals.js','js/curriculum.js','js/core.js','js/storage.js','js/engine.js','js/app.js']
++html=re.sub(r'\s*<link rel="stylesheet" href="styles\.css">\s*<link rel="stylesheet" href="css/v7\.css">', '\n  <style>\n'+css+'\n  </style>', html)
++order=['config.js','js/profile-images.js','js/profiles.js','js/visuals.js','js/curriculum.js','content/packs/family-foundation-v1.js','js/content-registry.js','js/content-adapter.js','js/core.js','js/storage.js','js/privacy.js','js/recorder.js','js/auth.js','js/sync.js','js/accessibility.js','js/release.js','js/engine.js','js/app.js']
+ for file in order:
+-    code=(root/file).read_text(encoding='utf-8')
++    if file=='js/profile-images.js':
++        items=[]
++        for name in ['saeed','arezoo','elena','aria']:
++            raw=(root/'assets'/'profiles'/f'{name}.webp').read_bytes()
++            items.append(f"{name}:'data:image/webp;base64,{base64.b64encode(raw).decode()}'")
++        code='window.FLH_PROFILE_IMAGES={'+','.join(items)+'};'
++    else:
++        code=(root/file).read_text(encoding='utf-8')
+     pattern=r'\s*<script src="'+re.escape(file)+r'"></script>'
+-    html=re.sub(pattern, lambda _m: '\n  <script>\n'+code.replace('</script>','<\\/script>')+'\n  </script>', html)
+-html=html.replace('Family Language OS — خانه زبان خانواده','Family Language OS v6.1 — خانه زبان خانواده')
++    html,n=re.subn(pattern, lambda _m: '\n  <script>\n'+code.replace('</script>','<\\/script>')+'\n  </script>', html)
++    if n!=1: raise RuntimeError(f'missing script reference: {file}')
++html=html.replace('Family Language OS — خانه زبان خانواده','Family Language OS v7 RC1 — خانه زبان خانواده')
+ dist=root/'dist';dist.mkdir(exist_ok=True)
+-out=dist/'Family_Language_OS_v6_1_Learning_Engine_Core_Standalone.html'
++out=dist/'Family_Language_OS_v7_RC1_Standalone.html'
+ out.write_text(html,encoding='utf-8')
+ print(out)
+diff --git a/version-v6.2.json b/version-v6.2.json
+new file mode 100644
+index 0000000..f14c410
+--- /dev/null
++++ b/version-v6.2.json
+@@ -0,0 +1,8 @@
++{
++  "name": "Family Language OS",
++  "version": "6.2.0-content-authoring-alpha1",
++  "schema": 25,
++  "branch": "v6.2-content-authoring",
++  "parent": "6.1.0-learning-engine-core",
++  "mainUntouched": true
++}
+\ No newline at end of file
+diff --git a/version.json b/version.json
+index f14c410..76df1a6 100644
+--- a/version.json
++++ b/version.json
+@@ -1,8 +1,14 @@
+ {
+   "name": "Family Language OS",
+-  "version": "6.2.0-content-authoring-alpha1",
+-  "schema": 25,
+-  "branch": "v6.2-content-authoring",
+-  "parent": "6.1.0-learning-engine-core",
++  "version": "7.0.0-rc1",
++  "schema": 30,
++  "channel": "release-candidate",
++  "branch": "v7-final-production",
++  "parent": "6.2.0-content-authoring-alpha1",
++  "curriculum_units": 184,
++  "authored_lessons_current": 48,
++  "profiles": ["saeed", "arezoo", "elena", "aria"],
++  "languages": ["en", "de"],
++  "max_devices": 2,
+   "mainUntouched": true
+-}
+\ No newline at end of file
++}
