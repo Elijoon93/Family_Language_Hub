@@ -1,0 +1,93 @@
+(function(){
+  'use strict';
+  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+  const store=FLH_STORE, engine=FLH_ENGINE;
+  let currentView='today';
+  let plan=null;
+  let gateDraft=null;
+  let timer={seconds:0,total:0,interval:null,running:false};
+  let activeRecording=null;
+  const pageMeta={today:['برنامه تطبیقی امروز','امروز'],path:['نقشه راه از صفر تا تسلط','مسیر یادگیری'],practice:['آزمایشگاه مهارت و عملکرد','تمرین'],library:['منابع، سناریوها و مسیرهای تخصصی','کتابخانه'],reports:['شواهد عملکرد و تسلط','گزارش‌ها'],family:['دید کلی بدون مقایسه ناسالم','خانواده'],parent:['حریم خصوصی و راهنمای والد','مرکز والد'],sync:['ورود خانوادگی و دو دستگاه','همگام‌سازی'],me:['تنظیمات، داده و پذیرش دستگاه','من']};
+
+  function init(){
+    FLH_A11Y?.apply(store.get().settings);
+    registerSW();
+    bindGlobal();
+    bindReleaseEvents();
+    store.subscribe(()=>{renderShell();renderView();});
+    renderShell();
+    switchView(store.get().active.view||'today');
+    $('#boot').classList.add('hidden');$('#app').classList.remove('hidden');
+    const s=store.get();
+    if(!s.sessions.length)setTimeout(()=>openSessionGate(),350);
+  }
+  function registerSW(){FLH_RELEASE?.register().catch(()=>{});}
+  function bindGlobal(){
+    $('#mainNav').addEventListener('click',e=>{const b=e.target.closest('button[data-view]');if(b)switchView(b.dataset.view);});
+    $('#openSessionGate').onclick=openSessionGate;$('#activeIdentity').onclick=openSessionGate;$('#activeIdentity').title='تغییر عضو، زبان و سطح';
+    $('#focusBtn').onclick=openFocus;
+    $('#backupBtn').onclick=backup;
+    $('#restoreInput').onchange=restore;
+    $('#sessionForm').addEventListener('submit',e=>{e.preventDefault();applyGate();});
+    $('#sessionGate').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.close();});
+    window.addEventListener('online',updateSyncBadge);window.addEventListener('offline',updateSyncBadge);
+  }
+  function bindReleaseEvents(){
+    window.addEventListener('flh-update-ready',e=>{const banner=$('#updateBanner');if(!banner)return;banner.classList.remove('hidden');$('#applyUpdateBtn').onclick=()=>FLH_RELEASE.applyUpdate(e.detail);});
+    window.addEventListener('flh-install-ready',()=>{const b=$('#installPwaBtn');if(b)b.disabled=false;});
+    window.addEventListener('flh-auth-changed',()=>{updateSyncBadge();if(currentView==='sync')renderView();});
+  }
+  function renderShell(){
+    const s=store.get(),ctx=engine.active();document.body.dataset.profile=ctx.profile.id;document.body.dataset.language=ctx.language;
+    $('#familyRail').innerHTML=Object.values(FLH_PROFILES).map(p=>familyButton(p,s.active.profile)).join('');
+    $$('.family-button').forEach(b=>b.onclick=()=>selectProfile(b.dataset.profile));
+    $('#activeIdentity').innerHTML=`${avatarHTML(ctx.profile)}<div><strong>${ctx.profile.name}</strong><small>${FLH_LANGUAGE_META[ctx.language].flag} ${FLH_LANGUAGE_META[ctx.language].fa} · ${levelLabel(ctx.level)}</small></div>`;
+    updateSyncBadge();
+  }
+  function familyButton(p,active){const s=store.get(),lang=s.active.profile===p.id?s.active.language:p.defaultLanguage,level=p.id==='aria'?'PRE':p.levels[lang];return`<button class="family-button ${p.id===active?'active':''}" data-profile="${p.id}">${avatarHTML(p)}<div><strong>${p.name}</strong><small>${p.role}</small></div><span class="level-pill">${FLH_LANGUAGE_META[lang].flag} ${level}</span></button>`;}
+  function avatarHTML(p){return`<div class="avatar">${p.avatar?`<img src="${p.avatar}" alt="${p.name}">`:`<span>${p.icon}</span>`}</div>`;}
+  function selectProfile(pid){
+    const p=FLH_PROFILES[pid],lang=p.defaultLanguage,level=p.id==='aria'?'PRE':p.levels[lang];
+    store.update(s=>{s.active.profile=pid;s.active.language=lang;s.active.level=level;s.active.duration=p.dailyMinutes;s.active.goal=p.goals[lang][0];return s;},'select-profile');
+    plan=engine.buildDailyPlan({force:true});store.savePlan(plan);switchView('today');
+  }
+  function switchView(view){currentView=view;store.update(s=>{s.active.view=view;return s;},'view');const m=pageMeta[view];$('#eyebrow').textContent=m[0];$('#pageTitle').textContent=m[1];$$('#mainNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));renderView();}
+  function renderView(){const root=$('#viewRoot');if(!root)return;const render={today:renderToday,path:renderPath,practice:renderPractice,library:renderLibrary,reports:renderReports,family:renderFamily,parent:renderParent,sync:renderSync,me:renderMe}[currentView]||renderToday;root.innerHTML=render();bindView();}
+  function bindView(){
+    $$('[data-action="start-session"]').forEach(b=>b.onclick=()=>{plan=engine.buildDailyPlan();renderView();openFirstIncomplete();});
+    $$('[data-task-id]').forEach(b=>b.onclick=()=>openTask(b.dataset.taskId));
+    $$('[data-open-unit]').forEach(b=>b.onclick=()=>openUnit(b.dataset.openUnit));
+    $$('[data-practice]').forEach(b=>b.onclick=()=>launchPractice(b.dataset.practice));
+    $$('[data-speak]').forEach(b=>b.onclick=()=>speak(decodeURIComponent(b.dataset.speak)));
+    $$('[data-switch-profile]').forEach(b=>b.onclick=()=>selectProfile(b.dataset.switchProfile));
+    const ex=$('#exportBtn');if(ex)ex.onclick=backup;
+    const im=$('#importBtn');if(im)im.onclick=()=>$('#restoreInput').click();
+    const rs=$('#resetBtn');if(rs)rs.onclick=resetApp;
+    const sync=$('#syncConfigBtn');if(sync)sync.onclick=showSyncHelp;
+    $$('[data-setting]').forEach(el=>el.onchange=()=>updateSetting(el.dataset.setting,el.type==='checkbox'?el.checked:el.value));
+    const signIn=$('#signInBtn');if(signIn)signIn.onclick=()=>openAuth('signin');
+    const signUp=$('#signUpBtn');if(signUp)signUp.onclick=()=>openAuth('signup');
+    const signOut=$('#signOutBtn');if(signOut)signOut.onclick=async()=>{await FLH_AUTH.signOut();toast('از حساب خانوادگی خارج شدید','good');renderView();};
+    const syncNow=$('#syncNowBtn');if(syncNow)syncNow.onclick=runSync;
+    const install=$('#installPwaBtn');if(install)install.onclick=async()=>{try{await FLH_RELEASE.install();toast('درخواست نصب ارسال شد','good');}catch(e){toast('نصب از منوی مرورگر در دسترس است','bad');}};
+    const privacy=$('#privacyBtn');if(privacy)privacy.onclick=openPrivacy;
+    const deleteProfile=$('#deleteProfileDataBtn');if(deleteProfile)deleteProfile.onclick=deleteActiveProfileData;
+    const deleteRecordings=$('#deleteRecordingsBtn');if(deleteRecordings)deleteRecordings.onclick=async()=>{if(confirm('همه ضبط‌های محلی حذف شوند؟')){await FLH_RECORDER.clear();toast('ضبط‌های محلی حذف شدند','good');renderView();}};
+    const refreshDevices=$('#refreshDevicesBtn');if(refreshDevices)refreshDevices.onclick=loadDevices;
+    $$('[data-remove-device]').forEach(b=>b.onclick=async()=>{try{await FLH_SYNC.removeDevice(b.dataset.removeDevice);toast('دستگاه حذف شد','good');loadDevices();}catch(e){toast(e.message,'bad');}});
+    if($('#recordingsList'))loadRecordings();
+    if($('#deviceList')&&FLH_AUTH.getSession())loadDevices();
+  }
+  function renderToday(){
+    const ctx=engine.active();plan=plan&&plan.profile===ctx.profile.id&&plan.language===ctx.language&&plan.date===engine.todayKey()?plan:engine.buildDailyPlan();if(store.get().activePlan?.id!==plan.id)setTimeout(()=>store.savePlan(plan),0);
+    const pct=engine.sessionProgress(plan),levelPct=engine.levelProgress(ctx),p=ctx.progress;
+    return `<div class="stack">
+      <section class="hero card"><div class="hero-content"><div><span class="badge language">${FLH_LANGUAGE_META[ctx.language].flag} ${FLH_LANGUAGE_META[ctx.language].fa} · ${levelLabel(ctx.level)}</span><h2>${greeting(ctx.profile)}؛ برنامه امروز آماده است</h2><p>${todayNarrative(ctx,plan.unit)} مسیر امروز از واحد «${plan.unit.titleFa}» ساخته شده است.${plan.authoredLesson?` محتوای تألیفی فعال: «${plan.authoredLesson.titleFa}».`:''} اولویت موتور: ${engine.skillFa(plan.priorities?.primarySkill||'vocabulary')}؛ مرور سررسید: ${(plan.priorities?.dueErrors||0)+(plan.priorities?.dueVocab||0)} مورد.</p><div class="hero-actions"><button class="primary-btn" data-action="start-session">شروع/ادامه نشست</button><button class="secondary-btn" onclick="document.getElementById('openSessionGate').click()">تغییر زبان و هدف</button></div></div><div class="hero-progress" style="--pct:${pct}%"><div><strong>${pct}%</strong><small>نشست امروز</small></div></div></div></section>
+      <div class="metric-grid">${metric('🔥',p.streak||0,'روز پیوسته')}${metric('⏱️',p.totalMinutes||0,'دقیقه مطالعه')}${metric('⭐',p.xp||0,'امتیاز یادگیری')}${metric('🧭',levelPct+'%','پیشرفت سطح')}</div>
+      <div class="view-grid"><div class="stack">
+        <section class="card"><div class="card-head"><div><h2>نشست هدایت‌شده امروز</h2><p>${plan.steps.length} گام · حدود ${plan.steps.reduce((a,x)=>a+x.minutes,0)} دقیقه · ${plan.unit.titleFa}</p></div><div><span class="badge">${plan.goal}</span>${plan.authoredLesson?`<div class="content-source">Authored Content · ${plan.authoredLesson.id}</div>`:''}</div></div><div class="session-list">${plan.steps.map((x,i)=>sessionStep(x,i,ctx)).join('')}</div></section>
+        <section class="card"><div class="card-head"><div><h2>پیشرفت مهارت‌ها</h2><p>امتیازها بر اساس عملکرد ثبت‌شده، نه صرف بازکردن صفحه</p></div></div>${skillRows(p.skills)}</section>
+      </div><div class="stack">
+        <section class="card"><div class="card-head"><div><h3>پیشنهاد مربی تطبیقی</h3><p>براساس مسیر، سن و عملکرد</p></div></div><div class="recommendations">${engine.recommendations(ctx).map(r=>`<div class="recommendation"><strong>${r.title}</strong><small>${r.text}</small></div>`).join('')}</div></section>
+        <section class="card"><div class="card-head"><div><h3>فعالیت ۱۴ روز اخیر</h3><p>شدت رنگ = زمان یادگیری</p></div></div>${heatmap(p.heat)}</section>
+        <section class="card"><div class="card-head"><div><h3>واحد فعلی</h3><p>${plan.unit.title}</p></div></div><div class="recommendation"><strong>${plan.unit.titleFa}</strong><small>${plan.unit.grammar||'یادگیری سن‌محور'} · ${plan.uni
