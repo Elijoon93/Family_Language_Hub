@@ -1,0 +1,46 @@
+name: Apply v7 Release Payload
+on:
+  push:
+    branches: [v7-payload-staging]
+    paths: [release_payload/READY]
+permissions:
+  contents: write
+concurrency:
+  group: apply-v7-release-payload
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Reconstruct and extract audited payload
+        run: |
+          cat release_payload/part-* | base64 -d > /tmp/v7-final.tar.xz
+          tar -xJf /tmp/v7-final.tar.xz -C .
+          rm -rf release_payload
+          rm -f .github/workflows/apply-v7-payload.yml
+      - name: Validate JavaScript syntax
+        run: find js content/packs tests -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Run learning-engine and content tests
+        run: |
+          node tests/core.test.js
+          node tests/content.test.js
+          node tests/v7.test.js
+          node tests/sync.mock.test.js
+          node tests/pwa-static.test.js
+      - name: Build standalone release artifact
+        run: |
+          python tools/build_standalone.py
+          test -s dist/Family_Language_OS_v7_RC1_Standalone.html
+      - name: Commit audited release candidate
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "release(v7): integrate final production release candidate"
+          git push origin HEAD:v7-final-production
